@@ -1,7 +1,7 @@
 'use client';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow, TableFooter } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 import { exportToPdf } from '@/lib/pdfGenerator';
 import { Progress } from "@/components/ui/progress";
@@ -57,6 +57,13 @@ export default function AdminDashboard() {
         };
         fetchData();
     }, []);
+
+    // --- LOGIKA BARU: Hitung rata-rata nilai akhir ---
+    const averageFinalScore = useMemo(() => {
+        if (recapData.length === 0) return 0;
+        const totalScore = recapData.reduce((sum, crew) => sum + crew.totalNilaiAkhir, 0);
+        return totalScore / recapData.length;
+    }, [recapData]); // Akan dihitung ulang hanya jika recapData berubah
 
     if (isLoading) return <div className="text-center p-10">Memuat data rekapitulasi...</div>;
     if (error) return <div className="text-center p-10 text-red-500">Error: {error}</div>;
@@ -137,6 +144,15 @@ export default function AdminDashboard() {
                                         </TableRow>
                                     ))}
                                 </TableBody>
+                                {/* --- BAGIAN BARU: Table Footer untuk Rata-rata --- */}
+                                <TableFooter>
+                                    <TableRow>
+                                        {/* Gabungkan semua kolom sebelum kolom terakhir */}
+                                        <TableCell colSpan={11} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
+                                        {/* Tampilkan rata-rata di kolom terakhir */}
+                                        <TableCell className="text-center font-extrabold text-xl text-primary">{averageFinalScore.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                </TableFooter>
                             </Table>
                         </div>
                     </AccordionContent>
