@@ -1,29 +1,28 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
-export const revalidate = 0;
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
     try {
         const { data, error } = await supabaseAdmin
             .from('assessment_periods')
-            .select('id')
+            .select('name')
             .eq('is_active', true)
-            .limit(1)
-            .single();
+            .single(); // Ambil hanya satu baris
 
-        if (error || !data) {
-            console.error('FINAL DEBUG: Gagal menemukan periode aktif di DB:', error);
-            throw new Error('Tidak ada periode penilaian yang aktif di database.');
+        if (error) {
+            // Jika tidak ada periode aktif, jangan anggap sebagai error
+            if (error.code === 'PGRST116') {
+                return NextResponse.json({ name: null });
+            }
+            throw error;
         }
 
-        return NextResponse.json(data, {
-            headers: {
-                'Cache-Control': 'no-store, max-age=0',
-            },
-        });
+        return NextResponse.json(data);
 
     } catch (error: any) {
+        console.error("Error fetching active period:", error);
         return NextResponse.json({ message: error.message }, { status: 500 });
     }
 }

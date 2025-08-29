@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Star } from 'lucide-react';
+import { Star, Mail } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient'; // Pastikan import ini ada
 import { toast } from "sonner";
@@ -40,30 +40,75 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [message, setMessage] = useState('');
-
+    const [assessorName, setAssessorName] = useState('');
+    const [activePeriodName, setActivePeriodName] = useState('');
     const { outletCode } = params;
+    const [systemRating, setSystemRating] = useState<string | null>(null);
+    const [hrRating, setHrRating] = useState<string | null>(null);
+    const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
+    const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
+    const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
 
     // === DATA FETCHING ===
     useEffect(() => {
-        if (!outletCode) return;
-        const fetchCrewData = async () => {
+        const fetchData = async () => {
             setIsLoading(true);
-            setError(null);
+            setError('');
             try {
-                const response = await fetch(`/api/crew/${outletCode}`);
-                if (!response.ok) throw new Error('Gagal memuat data kru.');
-                const data: CrewMember[] = await response.json();
-                const nonSupervisorCrew = data.filter(c => c.role !== 'supervisor');
-                setAllCrew(nonSupervisorCrew);
+                // Ambil data kru dan data periode secara bersamaan untuk efisiensi
+                const [crewRes, periodRes] = await Promise.all([
+                    fetch(`/api/crew/${params.outletCode}`),
+                    fetch('/api/active-period')
+                ]);
+
+                if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
+                if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
+
+                const crewData = await crewRes.json();
+                const periodData = await periodRes.json();
+                
+                setAllCrew(crewData);
+
+                // Simpan nama periode ke dalam state
+                if (periodData && periodData.name) {
+                    setActivePeriodName(periodData.name);
+                }
+
             } catch (err: any) {
                 setError(err.message);
             } finally {
                 setIsLoading(false);
             }
         };
-        fetchCrewData();
-    }, [outletCode]);
+        fetchData();
+    }, [params.outletCode]);
 
+    useEffect(() => {
+    const fetchFeedbackHistory = async () => {
+        // Hanya jalankan jika kita berada di halaman sukses dan punya semua ID yang dibutuhkan
+        if (step === 'success' && assessor && activePeriod) {
+            try {
+                const res = await fetch(`/api/get-feedback?assessor_id=${assessor.id}&period_id=${activePeriod.id}`);
+                if (!res.ok) return; // Abaikan jika gagal
+
+                const history: { category: string, rating: string }[] = await res.json();
+                
+                // Jika ada riwayat (minimal 1), berarti sudah pernah submit
+                if (history.length > 0) {
+                    setHasSubmittedFeedback(true);
+                } else {
+                    setHasSubmittedFeedback(false); // Pastikan statusnya false jika belum ada
+                }
+            } catch (err) {
+                console.error("Gagal memuat riwayat feedback", err);
+            }
+        }
+    };
+
+        fetchFeedbackHistory();
+    }, [step, assessor, activePeriod]); // Dijalankan saat step, assessor, atau activePeriod berubah
+    
     useEffect(() => {
     // Fungsi ini hanya berjalan jika kita berada di halaman 'success'
         if (step === 'success') {
@@ -83,31 +128,48 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     const handleStart = () => setStep('description');
     const handleStartAssessment = () => setStep('selectAssessor');
 
+    const handleAssessorChange = (id: string) => {
+        // Simpan ID dari kru yang sedang menilai (menggunakan allCrew yang tersedia)
+        const selectedCrew = allCrew.find(crew => crew.id === id) || null;
+        setAssessor(selectedCrew);
+        setAssessorName(selectedCrew ? selectedCrew.full_name : '');
+
+        // Reset pilihan yang berkaitan dengan penilaian untuk sesi baru
+        setAssessed(null);
+        setScores({});
+        setAspects([]);
+
+        // Jika ID valid, lanjut ke pemilihan yang akan dinilai; jika kosong, tetap di selectAssessor
+        if (id) {
+            setStep('selectAssessed');
+        } else {
+            setStep('selectAssessor');
+        }
+    };
+
     const handleSelectAssessor = async (assessorId: string) => {
-    const selected = allCrew.find(crew => crew.id === assessorId);
-    if (selected) {
-        setAssessor(selected);
-        setIsLoading(true); // Tampilkan loading saat kita cek riwayat
+        const selected = allCrew.find(crew => crew.id === assessorId);
+        if (selected) {
+            setAssessor(selected);
+            // --- PERBAIKAN UNTUK NAMA PENILAI ---
+            setAssessorName(selected.full_name); // Simpan nama lengkap ke state
+            // -----------------------------------
 
-        try {
-            // Panggil API baru untuk mendapatkan ID kru yang sudah dinilai
-            const historyResponse = await fetch(`/api/history?assessor_id=${assessorId}`);
-            const assessedIds: string[] = await historyResponse.json();
+            setIsLoading(true);
 
-            // Filter daftar kru: tampilkan hanya yang ID-nya TIDAK ADA di dalam assessedIds
-            // dan juga bukan diri sendiri
-            const unassessedCrew = allCrew.filter(
-                crew => crew.id !== assessorId && !assessedIds.includes(crew.id)
-            );
+            try {
+                const historyResponse = await fetch(`/api/history?assessor_id=${assessorId}`);
+                const assessedIds: string[] = await historyResponse.json();
+                const unassessedCrew = allCrew.filter(
+                    crew => crew.id !== assessorId && !assessedIds.includes(crew.id)
+                );
+                setRemainingToAssess(unassessedCrew);
 
-            setRemainingToAssess(unassessedCrew);
-
-            // Jika ternyata semua sudah dinilai, langsung ke halaman sukses
-            if (unassessedCrew.length === 0) {
-                setStep('success');
-            } else {
-                setStep('selectAssessed');
-            }
+                if (unassessedCrew.length === 0) {
+                    setStep('success');
+                } else {
+                    setStep('selectAssessed');
+                }
             } catch (err) {
                 setError("Gagal memuat riwayat penilaian.");
             } finally {
@@ -200,6 +262,57 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             setIsSubmitting(false);
         }
     };
+
+    // Di dalam file app/nilai/[outletCode]/page.tsx
+
+    const handleFeedbackSubmit = async () => {
+        // Validasi seharusnya sudah ditangani oleh tombol, ini pengaman ekstra
+        if (!systemRating || !hrRating) {
+            toast.warning("Harap pilih rating untuk sistem dan HR terlebih dahulu.");
+            return;
+        }
+
+        setIsSubmittingFeedback(true);
+        try {
+            const response = await fetch('/api/submit-feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    rating_sistem: systemRating,
+                    rating_hr: hrRating,
+                    assessor_id: assessor?.id,
+                    period_id: activePeriod?.id
+                })
+            });
+
+            if (!response.ok) {
+                throw new Error("Gagal menyimpan feedback ke server.");
+            }
+            
+            // Jika berhasil, set status menjadi sudah submit secara permanen untuk sesi ini
+            setHasSubmittedFeedback(true);
+            toast.success("Feedback Terkirim!", {
+                description: "Terima kasih atas masukanmu yang berharga.",
+            });
+
+        } catch (error: any) {
+            toast.error("Terjadi Kesalahan", {
+                description: error.message || "Gagal menyimpan feedback. Coba lagi nanti.",
+            });
+        } finally {
+            setIsSubmittingFeedback(false);
+        }
+    };
+    
+    // Definisikan data emoji
+    const ratings = [
+        { emoji: '😠', label: 'Sangat Buruk' },
+        { emoji: '😞', label: 'Buruk' },
+        { emoji: '😐', label: 'Biasa Saja' },
+        { emoji: '😊', label: 'Baik' },
+        { emoji: '🤩', label: 'Sangat Baik' }
+    ];
+
 
     // === RENDER LOGIC ===
     const renderContent = () => {
@@ -337,7 +450,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                             </div>
                         </div>
                         <Button onClick={handleStartAssessment} className="w-full mt-6 bg-[#033F3F] hover:bg-[#022020] text-white">
-                            Saya Mengerti, Lanjutkan Penilaian
+                            Oke Paham, Lanjut!
                         </Button>
                     </div>
                 );
@@ -347,7 +460,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                     <div className="space-y-6">
                         <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
                             <h3 className="font-semibold text-blue-800">Pilih Nama Kamu Dulu ya</h3>
-                            <p className="text-sm text-blue-600">Ini hanya syarat agar kamu tidak menilai diri sendiri.</p>
+                            <p className="text-sm text-blue-600">Ini cuma syarat agar kamu tidak menilai diri sendiri.</p>
                         </div>
                         <Separator />
                         <div>
@@ -381,7 +494,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 return (
                     <div className="space-y-6">
                         <div className="text-center">
-                            <h3 className="text-lg font-semibold">Anda Menilai: {assessed?.full_name}</h3>
+                            <h3 className="text-lg font-semibold">Kamu Menilai: {assessed?.full_name}</h3>
                             <p className="text-sm text-gray-500">Berikan penilaian dari 1 sampai 5 bintang.</p>
                         </div>
                         <Separator />
@@ -397,22 +510,109 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                         <Button variant="link" onClick={backToSelectCrew} className="w-full">Batal</Button>
                     </div>
                 );
-            case 'success':
-                 return (
-                    <div className="text-center space-y-4 py-8">
-                         <h2 className="text-2xl font-bold text-green-600">Luar Biasa, Terima Kasih!</h2>
-                         <p className="text-gray-600">
-                            Anda sudah berhasil menilai semua rekan kerja di outlet Anda untuk periode ini. Kontribusi Anda sangat berarti!
-                         </p>
-                         <div className="mt-6">
-                             <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
-                                 <section></section>
-                             </blockquote>
-                         </div>
+    // Di dalam file app/nilai/[outletCode]/page.tsx, di dalam renderContent()
+
+case 'success':
+    return (
+        <div className="text-center space-y-4 py-8">
+            <h2 className="text-2xl font-bold text-green-600">
+                Beres, Makasih {assessorName}!
+            </h2>
+            <p className="text-gray-600">
+                Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriodName}.
+            </p>
+            <div className="mt-6">
+                <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
+                    <section></section>
+                </blockquote>
+            </div>
+            
+            <Separator className="my-8" />
+
+            <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
+                
+                {/* Tampilkan pesan "Terkirim" jika sudah pernah submit */}
+                {hasSubmittedFeedback ? (
+                    <div className="text-center py-10">
+                        <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
+                        <p className="text-gray-600">Terima kasih atas masukanmu.</p>
                     </div>
-                );
-            default:
-                return null;
+                ) : (
+                    // Tampilkan form rating jika belum pernah submit
+                    <>
+                        <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
+                        
+                        {/* Rating Sistem */}
+                        <div className="space-y-2">
+                            <label className="font-medium text-gray-700">Gimana sistem & tampilan penilaian ini?</label>
+                            <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                {ratings.map(({ emoji, label }) => (
+                                    <button
+                                        key={label}
+                                        onClick={() => setSystemRating(label)}
+                                        className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}
+                                    >
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                        
+                        {/* Rating Tim HR */}
+                        <div className="space-y-2">
+                            <label className="font-medium text-gray-700">Gimana performa tim HR sejauh ini?</label>
+                            <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                {ratings.map(({ emoji, label }) => (
+                                    <button
+                                        key={label}
+                                        onClick={() => setHrRating(label)}
+                                        className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}
+                                    >
+                                        {emoji}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Tombol Submit */}
+                        <div className="pt-4 text-center">
+                            <Button 
+                                onClick={handleFeedbackSubmit}
+                                disabled={!systemRating || !hrRating || isSubmittingFeedback}
+                                className="w-full bg-[#033F3F] hover:bg-[#022020] text-white"
+                            >
+                                {isSubmittingFeedback && (
+                                    <svg className="mr-2 h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+                                    </svg>
+                                )}
+                                Kirim Feedback
+                            </Button>
+                            {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
+                        </div>
+                    </>
+                )}
+                
+                <Separator className="my-4" />
+
+                {/* Tombol Amplop Surat */}
+                <div className="text-center">
+                    <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
+                    <a 
+                        href="https://forms.gle/8bC2oNv1K42XA5916" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200"
+                    >
+                        <Mail className="w-5 h-5" />
+                        Kotak Curhat Aman
+                    </a>
+                </div>
+            </div>
+        </div>
+    );
+
         }
     };
 
@@ -451,7 +651,8 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                         <Image src="/logo.png" alt="Balista Logo" width={100} height={40} priority />
                     </div>
                     <CardTitle className="text-2xl font-bold text-[#022020]">
-                       Penilaian Individu - Outlet {outletCode.toUpperCase()}
+                       Penilaian Individu - {outletCode.toUpperCase()}<br></br>
+                       {activePeriodName}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="px-6 pb-6">
