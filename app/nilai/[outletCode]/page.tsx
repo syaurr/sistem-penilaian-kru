@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Star, Mail } from 'lucide-react';
+import { Star, Mail, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient'; // Pastikan import ini ada
 import { toast } from "sonner";
@@ -56,7 +56,6 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             setIsLoading(true);
             setError('');
             try {
-                // Ambil data kru dan data periode secara bersamaan untuk efisiensi
                 const [crewRes, periodRes] = await Promise.all([
                     fetch(`/api/crew/${params.outletCode}`),
                     fetch('/api/active-period')
@@ -69,12 +68,11 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 const periodData = await periodRes.json();
                 
                 setAllCrew(crewData);
-
-                // Simpan nama periode ke dalam state
-                if (periodData && periodData.name) {
-                    setActivePeriodName(periodData.name);
+                // --- PERBAIKAN UTAMA DI SINI ---
+                // Simpan seluruh objek periode (ID dan nama) ke dalam satu state
+                if (periodData && periodData.id) {
+                    setActivePeriod(periodData);
                 }
-
             } catch (err: any) {
                 setError(err.message);
             } finally {
@@ -85,44 +83,34 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     }, [params.outletCode]);
 
     useEffect(() => {
-    const fetchFeedbackHistory = async () => {
-        // Hanya jalankan jika kita berada di halaman sukses dan punya semua ID yang dibutuhkan
-        if (step === 'success' && assessor && activePeriod) {
-            try {
-                const res = await fetch(`/api/get-feedback?assessor_id=${assessor.id}&period_id=${activePeriod.id}`);
-                if (!res.ok) return; // Abaikan jika gagal
-
-                const history: { category: string, rating: string }[] = await res.json();
-                
-                // Jika ada riwayat (minimal 1), berarti sudah pernah submit
-                if (history.length > 0) {
-                    setHasSubmittedFeedback(true);
-                } else {
-                    setHasSubmittedFeedback(false); // Pastikan statusnya false jika belum ada
+        const fetchFeedbackHistory = async () => {
+            if (step === 'success' && assessor && activePeriod) {
+                try {
+                    const res = await fetch(`/api/get-feedback?assessor_id=${assessor.id}&period_id=${activePeriod.id}`);
+                    if (!res.ok) return;
+                    const history: { category: string, rating: string }[] = await res.json();
+                    if (history.length > 0) {
+                        setHasSubmittedFeedback(true);
+                    } else {
+                        setHasSubmittedFeedback(false);
+                    }
+                } catch (err) {
+                    console.error("Gagal memuat riwayat feedback", err);
                 }
-            } catch (err) {
-                console.error("Gagal memuat riwayat feedback", err);
             }
-        }
-    };
-
+        };
         fetchFeedbackHistory();
-    }, [step, assessor, activePeriod]); // Dijalankan saat step, assessor, atau activePeriod berubah
+    }, [step, assessor, activePeriod]);
     
     useEffect(() => {
-    // Fungsi ini hanya berjalan jika kita berada di halaman 'success'
         if (step === 'success') {
             const script = document.createElement('script');
             script.src = 'https://www.tiktok.com/embed.js';
             script.async = true;
             document.body.appendChild(script);
-
-            // Cleanup function untuk menghapus script saat komponen unmount
-            return () => {
-                document.body.removeChild(script);
-            };
+            return () => { document.body.removeChild(script); };
         }
-    }, [step]); // Bergantung pada state 'step'
+    }, [step]);
 
     // === HANDLER FUNCTIONS ===
     const handleStart = () => setStep('description');
@@ -151,12 +139,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
         const selected = allCrew.find(crew => crew.id === assessorId);
         if (selected) {
             setAssessor(selected);
-            // --- PERBAIKAN UNTUK NAMA PENILAI ---
-            setAssessorName(selected.full_name); // Simpan nama lengkap ke state
-            // -----------------------------------
-
             setIsLoading(true);
-
             try {
                 const historyResponse = await fetch(`/api/history?assessor_id=${assessorId}`);
                 const assessedIds: string[] = await historyResponse.json();
@@ -164,7 +147,6 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                     crew => crew.id !== assessorId && !assessedIds.includes(crew.id)
                 );
                 setRemainingToAssess(unassessedCrew);
-
                 if (unassessedCrew.length === 0) {
                     setStep('success');
                 } else {
@@ -266,11 +248,11 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     // Di dalam file app/nilai/[outletCode]/page.tsx
 
     const handleFeedbackSubmit = async () => {
-        // Validasi di sisi klien sebelum mengirim
         if (!systemRating || !hrRating) {
-            toast.warning("Harap pilih rating untuk sistem dan HR terlebih dahulu.");
+            toast.warning("Harap pilih rating untuk sistem dan HR.");
             return;
         }
+        // --- PERBAIKAN VALIDASI ---
         if (!assessor || !activePeriod) {
             toast.error("Terjadi Kesalahan", {
                 description: "Data penilai atau periode tidak ditemukan. Coba refresh halaman.",
@@ -283,31 +265,20 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             const response = await fetch('/api/submit-feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // --- PERBAIKAN UTAMA DI SINI ---
-                // Pastikan kita mengirim ID, bukan seluruh objek
                 body: JSON.stringify({
                     rating_sistem: systemRating,
                     rating_hr: hrRating,
-                    assessor_id: assessor.id,      // Kirim ID dari objek assessor
-                    period_id: activePeriod.id      // Kirim ID dari objek activePeriod
+                    assessor_id: assessor.id,
+                    period_id: activePeriod.id
                 })
             });
 
-            if (!response.ok) {
-                // Coba baca pesan error dari server jika ada
-                const errorData = await response.json();
-                throw new Error(errorData.message || "Gagal menyimpan feedback ke server.");
-            }
+            if (!response.ok) throw new Error("Gagal menyimpan feedback.");
             
             setHasSubmittedFeedback(true);
-            toast.success("Feedback Terkirim!", {
-                description: "Terima kasih atas masukanmu yang berharga.",
-            });
-
+            toast.success("Feedback Terkirim!");
         } catch (error: any) {
-            toast.error("Terjadi Kesalahan", {
-                description: error.message,
-            });
+            toast.error("Terjadi Kesalahan", { description: error.message });
         } finally {
             setIsSubmittingFeedback(false);
         }
@@ -519,111 +490,73 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                         <Button variant="link" onClick={backToSelectCrew} className="w-full">Batal</Button>
                     </div>
                 );
-    // Di dalam file app/nilai/[outletCode]/page.tsx, di dalam renderContent()
 
-case 'success':
-    return (
-        <div className="text-center space-y-4 py-8">
-            <h2 className="text-2xl font-bold text-green-600">
-                Beres, Makasih {assessorName}!
-            </h2>
-            <p className="text-gray-600">
-                Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriodName}.
-            </p>
-            <div className="mt-6">
-                <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
-                    <section></section>
-                </blockquote>
-            </div>
-            
-            <Separator className="my-8" />
-
-            <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
-                
-                {/* Tampilkan pesan "Terkirim" jika sudah pernah submit */}
-                {hasSubmittedFeedback ? (
-                    <div className="text-center py-10">
-                        <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
-                        <p className="text-gray-600">Terima kasih atas masukanmu.</p>
+            case 'success':
+                return (
+                    <div className="text-center space-y-4 py-8">
+                        <h2 className="text-2xl font-bold text-green-600">
+                            Beres, Makasih {assessor?.full_name}!
+                        </h2>
+                        <p className="text-gray-600">
+                            Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
+                        </p>
+                        <div className="mt-6">
+                            <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
+                                <section></section>
+                            </blockquote>
+                        </div>
+                        <Separator className="my-8" />
+                        <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
+                            {hasSubmittedFeedback ? (
+                                <div className="text-center py-10">
+                                    <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
+                                    <p className="text-gray-600">Terima kasih atas masukanmu.</p>
+                                </div>
+                            ) : (
+                                <>
+                                    <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
+                                    <div className="space-y-2">
+                                        <label className="font-medium text-gray-700">Gimana sistem & tampilan penilaian ini?</label>
+                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                            {ratings.map(({ emoji, label }) => (
+                                                <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="font-medium text-gray-700">Gimana performa tim HR sejauh ini?</label>
+                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                            {ratings.map(({ emoji, label }) => (
+                                                <button key={label} onClick={() => setHrRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="pt-4 text-center">
+                                        <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
+                                            {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Kirim Feedback
+                                        </Button>
+                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
+                                    </div>
+                                </>
+                            )}
+                            <Separator className="my-4" />
+                            <div className="text-center">
+                                <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
+                                <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200">
+                                    <Mail className="w-5 h-5" />
+                                    Kotak Curhat Aman
+                                </a>
+                            </div>
+                        </div>
                     </div>
-                ) : (
-                    // Tampilkan form rating jika belum pernah submit
-                    <>
-                        <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
-                        
-                        {/* Rating Sistem */}
-                        <div className="space-y-2">
-                            <label className="font-medium text-gray-700">Gimana sistem & tampilan penilaian ini?</label>
-                            <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
-                                {ratings.map(({ emoji, label }) => (
-                                    <button
-                                        key={label}
-                                        onClick={() => setSystemRating(label)}
-                                        className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}
-                                    >
-                                        {emoji}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                        
-                        {/* Rating Tim HR */}
-                        <div className="space-y-2">
-                            <label className="font-medium text-gray-700">Gimana performa tim HR sejauh ini?</label>
-                            <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
-                                {ratings.map(({ emoji, label }) => (
-                                    <button
-                                        key={label}
-                                        onClick={() => setHrRating(label)}
-                                        className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}
-                                    >
-                                        {emoji}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-
-                        {/* Tombol Submit */}
-                        <div className="pt-4 text-center">
-                            <Button 
-                                onClick={handleFeedbackSubmit}
-                                disabled={!systemRating || !hrRating || isSubmittingFeedback}
-                                className="w-full bg-[#033F3F] hover:bg-[#022020] text-white"
-                            >
-                                {isSubmittingFeedback && (
-                                    <svg className="mr-2 h-4 w-4 animate-spin" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
-                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
-                                    </svg>
-                                )}
-                                Kirim Feedback
-                            </Button>
-                            {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
-                        </div>
-                    </>
-                )}
-                
-                <Separator className="my-4" />
-
-                {/* Tombol Amplop Surat */}
-                <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
-                    <a 
-                        href="https://forms.gle/8bC2oNv1K42XA5916" 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200"
-                    >
-                        <Mail className="w-5 h-5" />
-                        Kotak Curhat Aman
-                    </a>
-                </div>
-            </div>
-        </div>
-    );
-
-        }
-    };
+                );
+            }
+        };
 
     // StarRating component for rating stars
     function StarRating({ aspect_key }: { aspect_key: string }) {
