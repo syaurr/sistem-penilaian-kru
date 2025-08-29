@@ -55,22 +55,27 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             setIsLoading(true);
             setError('');
             try {
-                const [crewRes, periodRes] = await Promise.all([
-                    fetch(`/api/crew/${params.outletCode}`),
-                    fetch('/api/active-period')
-                ]);
+        const [crewRes, periodRes] = await Promise.all([
+            fetch(`/api/crew/${params.outletCode}`),
+            fetch('/api/active-period')
+        ]);
 
-                if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
-                if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
+        if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
+        if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
 
-                const crewData = await crewRes.json();
-                const periodData = await periodRes.json();
-                
-                setAllCrew(crewData);
-                // PERBAIKAN: Simpan seluruh objek periode (ID dan nama) ke dalam satu state
-                if (periodData && periodData.id) {
-                    setActivePeriod(periodData);
-                }
+        const crewData = await crewRes.json();
+        const periodData = await periodRes.json();
+
+        console.log("--- DATA AWAL DITERIMA ---");
+        console.log("Data Periode dari API:", periodData);
+
+        setAllCrew(crewData);
+        if (periodData && periodData.id) {
+            setActivePeriod(periodData);
+            console.log("State 'activePeriod' BERHASIL DIATUR:", periodData);
+        } else {
+            console.log("PERINGATAN: Tidak ada periode aktif yang ditemukan dari API.");
+        }
 
             } catch (err: any) {
                 setError(err.message);
@@ -118,6 +123,10 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     const handleSelectAssessor = async (assessorId: string) => {
         const selected = allCrew.find(crew => crew.id === assessorId);
         if (selected) {
+            console.log("--- NAMA PENILAI DIPILIH ---");
+            console.log("Data Penilai yang Dipilih:", selected);
+            setAssessor(selected);
+            console.log("State 'assessor' BERHASIL DIATUR:", selected);
             setAssessor(selected); // Cukup atur state assessor
             setIsLoading(true);
             try {
@@ -229,6 +238,9 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     // Di dalam file app/nilai/[outletCode]/page.tsx
 
     const handleFeedbackSubmit = async () => {
+        console.log("--- TOMBOL KIRIM FEEDBACK DIKLIK ---");
+        console.log("Kondisi state 'assessor':", assessor);
+        console.log("Kondisi state 'activePeriod':", activePeriod);
         // PERBAIKAN VALIDASI
         if (!systemRating || !hrRating) {
             toast.warning("Harap pilih rating untuk sistem dan HR.");
