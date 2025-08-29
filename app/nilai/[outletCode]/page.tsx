@@ -266,9 +266,15 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     // Di dalam file app/nilai/[outletCode]/page.tsx
 
     const handleFeedbackSubmit = async () => {
-        // Validasi seharusnya sudah ditangani oleh tombol, ini pengaman ekstra
+        // Validasi di sisi klien sebelum mengirim
         if (!systemRating || !hrRating) {
             toast.warning("Harap pilih rating untuk sistem dan HR terlebih dahulu.");
+            return;
+        }
+        if (!assessor || !activePeriod) {
+            toast.error("Terjadi Kesalahan", {
+                description: "Data penilai atau periode tidak ditemukan. Coba refresh halaman.",
+            });
             return;
         }
 
@@ -277,19 +283,22 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             const response = await fetch('/api/submit-feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // --- PERBAIKAN UTAMA DI SINI ---
+                // Pastikan kita mengirim ID, bukan seluruh objek
                 body: JSON.stringify({
                     rating_sistem: systemRating,
                     rating_hr: hrRating,
-                    assessor_id: assessor?.id,
-                    period_id: activePeriod?.id
+                    assessor_id: assessor.id,      // Kirim ID dari objek assessor
+                    period_id: activePeriod.id      // Kirim ID dari objek activePeriod
                 })
             });
 
             if (!response.ok) {
-                throw new Error("Gagal menyimpan feedback ke server.");
+                // Coba baca pesan error dari server jika ada
+                const errorData = await response.json();
+                throw new Error(errorData.message || "Gagal menyimpan feedback ke server.");
             }
             
-            // Jika berhasil, set status menjadi sudah submit secara permanen untuk sesi ini
             setHasSubmittedFeedback(true);
             toast.success("Feedback Terkirim!", {
                 description: "Terima kasih atas masukanmu yang berharga.",
@@ -297,7 +306,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
 
         } catch (error: any) {
             toast.error("Terjadi Kesalahan", {
-                description: error.message || "Gagal menyimpan feedback. Coba lagi nanti.",
+                description: error.message,
             });
         } finally {
             setIsSubmittingFeedback(false);
