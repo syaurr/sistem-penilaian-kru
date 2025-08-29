@@ -7,14 +7,15 @@ export async function GET() {
     try {
         const { data, error } = await supabaseAdmin
             .from('assessment_periods')
-            .select('name')
+            // --- PERBAIKAN DI SINI ---
+            // Minta Supabase untuk mengirimkan 'id' DAN 'name'
+            .select('id, name') 
             .eq('is_active', true)
-            .single(); // Ambil hanya satu baris
+            .single();
 
         if (error) {
-            // Jika tidak ada periode aktif, jangan anggap sebagai error
             if (error.code === 'PGRST116') {
-                return NextResponse.json({ name: null });
+                return NextResponse.json({ message: "Tidak ada periode aktif" }, { status: 404 });
             }
             throw error;
         }
