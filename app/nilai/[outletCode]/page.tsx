@@ -38,6 +38,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     const [isLoading, setIsLoading] = useState(true);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [message, setMessage] = useState<string | null>(null);
     const { outletCode } = params;
 
     // State untuk feedback (lebih sederhana)
@@ -274,6 +275,33 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     ];
 
 
+    // StarRating component for rating stars (pindah sebelum renderContent untuk menghindari forward-reference issues)
+    const StarRating = ({ aspect_key }: { aspect_key: string }) => {
+        const value = scores[aspect_key] || 0;
+        const handleClick = (rating: number) => {
+            handleRatingChange(aspect_key, rating);
+        };
+        return (
+            <div className="flex gap-1">
+                {[1, 2, 3, 4, 5].map((star) => (
+                    <button
+                        key={star}
+                        type="button"
+                        onClick={() => handleClick(star)}
+                        className="focus:outline-none"
+                        aria-label={`Beri nilai ${star} bintang`}
+                    >
+                        <Star
+                            size={28}
+                            className={star <= value ? "fill-yellow-400 stroke-yellow-500" : "stroke-gray-300"}
+                            fill={star <= value ? "#facc15" : "none"}
+                        />
+                    </button>
+                ))}
+            </div>
+        );
+    };
+
     // === RENDER LOGIC ===
     const renderContent = () => {
         if (isLoading && !assessed) return <div className="text-center p-10">Loading...</div>;
@@ -471,84 +499,78 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                     </div>
                 );
 
-                case 'success':
-                return (
-                    <div className="text-center space-y-4 py-8">
-                        <h2 className="text-2xl font-bold text-green-600">
-                            {/* Baca nama langsung dari objek 'assessor' */}
-                            Beres, Makasih {assessor?.full_name}!
-                        </h2>
-                        <p className="text-gray-600">
-                            {/* Baca nama periode langsung dari objek 'activePeriod' */}
-                            Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
-                        </p>
-                        <div className="mt-6">
-                            <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
-                                <section></section>
-                            </blockquote>
-                        </div>
-                        
-                        <Separator className="my-8" />
+            case 'success':
+            return (
+                <div className="text-center space-y-4 py-8">
+                    <h2 className="text-2xl font-bold text-green-600">
+                        {/* Baca nama langsung dari objek 'assessor' */}
+                        Beres, Makasih {assessor?.full_name}!
+                    </h2>
+                    <p className="text-gray-600">
+                        {/* Baca nama periode langsung dari objek 'activePeriod' */}
+                        Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
+                    </p>
+                    <div className="mt-6">
+                        <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
+                            <section></section>
+                        </blockquote>
+                    </div>
+                    
+                    <Separator className="my-8" />
 
-                        <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
-                            {hasSubmittedFeedback ? (
-                                <div className="text-center py-10">
-                                    <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
-                                    <p className="text-gray-600">Terima kasih atas masukanmu.</p>
-                                </div>
-                            ) : (
-                                <>
-                                    <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
-                                    {/* ... (bagian rating sistem dan HR tidak berubah) ... */}
-                                    <div className="pt-4 text-center">
-                                        <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
-                                            {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            Kirim Feedback
-                                        </Button>
-                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
-                                    </div>
-                                </>
-                            )}
-                            <Separator className="my-4" />
-                            <div className="text-center">
-                                <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
-                                <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200">
-                                    <Mail className="w-5 h-5" />
-                                    Kotak Curhat Aman
-                                </a>
+                    <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
+                        {hasSubmittedFeedback ? (
+                            <div className="text-center py-10">
+                                <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
+                                <p className="text-gray-600">Terima kasih atas masukanmu.</p>
                             </div>
+                        ) : (
+                            <>
+                                <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
+                                <div className="space-y-2">
+                                        <label className="font-medium text-gray-700">Gimana sistem & tampilan penilaian ini?</label>
+                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                            {ratings.map(({ emoji, label }) => (
+                                                <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="font-medium text-gray-700">Gimana performa tim HR sejauh ini?</label>
+                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
+                                            {ratings.map(({ emoji, label }) => (
+                                                <button key={label} onClick={() => setHrRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                    {emoji}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                <div className="pt-4 text-center">
+                                    <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
+                                        {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Kirim Feedback
+                                    </Button>
+                                    {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
+                                </div>
+                            </>
+                        )}
+                        <Separator className="my-4" />
+                        <div className="text-center">
+                             <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
+                             <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200">
+                                 <Mail className="w-5 h-5" />
+                                 Kotak Curhat Aman
+                             </a>
                         </div>
                     </div>
-                );
-            }
-        };
-
-    // StarRating component for rating stars
-    function StarRating({ aspect_key }: { aspect_key: string }) {
-        const value = scores[aspect_key] || 0;
-        const handleClick = (rating: number) => {
-            handleRatingChange(aspect_key, rating);
-        };
-        return (
-            <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                        key={star}
-                        type="button"
-                        onClick={() => handleClick(star)}
-                        className="focus:outline-none"
-                        aria-label={`Beri nilai ${star} bintang`}
-                    >
-                        <Star
-                            size={28}
-                            className={star <= value ? "fill-yellow-400 stroke-yellow-500" : "stroke-gray-300"}
-                            fill={star <= value ? "#facc15" : "none"}
-                        />
-                    </button>
-                ))}
-            </div>
-        );
-    }
+                </div>
+            );
+            default:
+                return null;
+        }
+    };
 
     return (
         <div className="flex justify-center items-start min-h-screen py-10 bg-gray-100">
@@ -559,11 +581,11 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                     </div>
                     <CardTitle className="text-2xl font-bold text-[#022020]">
                        Penilaian Individu - {outletCode.toUpperCase()}<br />
-                       {activePeriod?.name ?? ''}
+                       {activePeriod?.name || 'Periode Aktif'}
                     </CardTitle>
                 </CardHeader>
                 <CardContent className="px-6 pb-6">
-                    {error && <div className="mb-4 text-center p-2 bg-red-100 text-red-700 rounded-md">{error}</div>}
+                    {message && <div className="mb-4 text-center p-2 bg-green-100 text-green-700 rounded-md">{message}</div>}
                     {renderContent()}
                 </CardContent>
             </Card>
