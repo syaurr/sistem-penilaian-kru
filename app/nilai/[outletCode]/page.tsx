@@ -8,8 +8,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Separator } from '@/components/ui/separator';
 import { Star, Mail, Loader2 } from 'lucide-react';
 import Image from 'next/image';
-import { supabase } from '@/lib/supabaseClient'; // Pastikan import ini ada
+import { supabase } from '@/lib/supabaseClient';
 import { toast } from "sonner";
+import { Textarea } from "@/components/ui/textarea";
 
 type CrewMember = {
     id: string;
@@ -44,6 +45,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     // State untuk feedback (lebih sederhana)
     const [systemRating, setSystemRating] = useState<string | null>(null);
     const [hrRating, setHrRating] = useState<string | null>(null);
+    const [feedbackMessage, setFeedbackMessage] = useState('');
     const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
     const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -261,6 +263,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 body: JSON.stringify({
                     rating_sistem: systemRating,
                     rating_hr: hrRating,
+                    message: feedbackMessage,
                     assessor_id: assessor.id,
                     period_id: activePeriod.id
                 })
@@ -559,13 +562,26 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                                             ))}
                                         </div>
                                     </div>
-                                <div className="pt-4 text-center">
-                                    <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
-                                        {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Kirim Feedback
-                                    </Button>
-                                    {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
-                                </div>
+
+                                    <div className="space-y-2">
+                                        <label htmlFor="feedbackMessage" className="font-medium text-gray-700">
+                                            Pesan/Kritik untuk Tim HR (Opsional)
+                                        </label>
+                                        <Textarea
+                                            id="feedbackMessage"
+                                            placeholder="Tulis masukanmu di sini..."
+                                            value={feedbackMessage}
+                                            onChange={(e) => setFeedbackMessage(e.target.value)}
+                                        />
+                                    </div>
+                                    
+                                    <div className="pt-4 text-center">
+                                        <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
+                                            {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                            Kirim Feedback
+                                        </Button>
+                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
+                                    </div>
                             </>
                         )}
                         <Separator className="my-4" />
