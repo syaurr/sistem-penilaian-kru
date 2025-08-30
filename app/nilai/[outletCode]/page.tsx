@@ -541,9 +541,9 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                             </div>
                         ) : (
                             <>
-                                <h3 className="text-lg font-semibold text-center text-gray-800">Bagaimana Pengalamanmu?</h3>
+                                <h3 className="text-lg font-semibold text-center text-gray-800">Kasih Feedback dikit yuk!</h3>
                                 <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Gimana sistem & tampilan penilaian ini?</label>
+                                        <label className="font-medium text-gray-700">Gimana nih cara & tampilan penilaian individu versi upgrade ini?</label>
                                         <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
                                             {ratings.map(({ emoji, label }) => (
                                                 <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
@@ -553,7 +553,8 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Gimana performa tim HR sejauh ini?</label>
+                                        <label className="font-medium text-gray-700">Menurut kamu sebagai crew, tim HR Balista performa kerjanya gimana?</label>
+                                        <label className="font-small text-gray-700">untuk semuanya kaya responnya, sikapnya, programnya, dll</label>
                                         <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
                                             {ratings.map(({ emoji, label }) => (
                                                 <button key={label} onClick={() => setHrRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
@@ -565,7 +566,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
 
                                     <div className="space-y-2">
                                         <label htmlFor="feedbackMessage" className="font-medium text-gray-700">
-                                            Pesan/Kritik untuk Tim HR (Opsional)
+                                            Sampein pesan atau saran kamu untuk HR disini (Opsional)
                                         </label>
                                         <Textarea
                                             id="feedbackMessage"
