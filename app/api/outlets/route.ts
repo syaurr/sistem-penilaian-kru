@@ -1,7 +1,7 @@
 // File: app/api/outlets/route.ts
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
-
+export const revalidate = 0;
 export async function GET() {
     try {
         const { data, error } = await supabase.from('outlets').select('id, name');

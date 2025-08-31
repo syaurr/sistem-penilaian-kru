@@ -1,7 +1,7 @@
 // File: app/api/submit-supervisor-assessment/route.ts
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
-
+export const revalidate = 0;
 export async function POST(request: Request) {
     try {
         const { supervisor_id, scores } = await request.json(); // scores akan berbentuk: [{ assessed_crew_id: 'uuid', score: 90 }]

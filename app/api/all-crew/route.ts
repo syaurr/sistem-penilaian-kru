@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-
+export const revalidate = 0;
 // PERINTAH BARU UNTUK VERCEL: Jadikan rute ini sepenuhnya dinamis
 export const dynamic = 'force-dynamic';
 

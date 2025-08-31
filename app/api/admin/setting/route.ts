@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-
+export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
 // Fungsi untuk admin mengambil pengaturan saat ini

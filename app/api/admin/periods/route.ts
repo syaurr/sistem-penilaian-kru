@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-
+export const revalidate = 0;
 // GET: Mengambil semua periode
 export async function GET() {
     const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').order('start_date', { ascending: false });

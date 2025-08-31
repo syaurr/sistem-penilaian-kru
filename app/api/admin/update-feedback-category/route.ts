@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-
+export const revalidate = 0;
 export async function PATCH(request: Request) {
     try {
         const { id, category } = await request.json();

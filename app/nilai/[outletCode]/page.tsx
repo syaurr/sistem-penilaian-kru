@@ -519,7 +519,17 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 );
 
             case 'success':
-                const videoId = tiktokUrl.split('/video/')[1]?.split('?')[0] || '';
+                let videoId = '';
+                    if (tiktokUrl) {
+                        try {
+                            const url = new URL(tiktokUrl);
+                            const pathParts = url.pathname.split('/');
+                            videoId = pathParts[pathParts.length - 1];
+                        } catch (e) {
+                            console.error("Invalid TikTok URL format");
+                        }
+                    }
+
             return (
                 <div className="text-center space-y-4 py-8">
                     <h2 className="text-2xl font-bold text-green-600">

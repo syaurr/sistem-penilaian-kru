@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabaseClient';
-
+export const revalidate = 0;
 // Kita akan menggunakan tipe 'NextRequest' untuk mendapatkan detail URL
 import type { NextRequest } from 'next/server';
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+export const revalidate = 0;
 
 export async function POST(request: Request) {
     try {

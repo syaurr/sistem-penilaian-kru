@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
-
+export const revalidate = 0;
 // GET: Mengambil semua data bobot
 export async function GET() {
     const { data, error } = await supabaseAdmin.from('assessment_weights').select('*').order('id');
