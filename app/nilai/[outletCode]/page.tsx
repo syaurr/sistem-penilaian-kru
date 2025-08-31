@@ -541,9 +541,9 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                             </div>
                         ) : (
                             <>
-                                <h3 className="text-lg font-semibold text-center text-gray-800">Kasih Feedback dikit yuk!</h3>
+                                <h3 className="text-lg font-semibold text-center text-gray-800">Kasih feedback dikit yuk!</h3>
                                 <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Gimana nih cara & tampilan penilaian individu versi upgrade ini?</label>
+                                        <label className="font-medium text-gray-700">Gimana cara & tampilan Penilaian Individu versi upgrade ini?</label>
                                         <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
                                             {ratings.map(({ emoji, label }) => (
                                                 <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
@@ -553,8 +553,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                                         </div>
                                     </div>
                                     <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Menurut kamu sebagai crew, tim HR Balista performa kerjanya gimana?</label>
-                                        <label className="font-small text-gray-700">untuk semuanya kaya responnya, sikapnya, programnya, dll</label>
+                                        <label className="font-medium text-gray-700">Gimana performa kerjanya tim HR Balista </label>
                                         <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
                                             {ratings.map(({ emoji, label }) => (
                                                 <button key={label} onClick={() => setHrRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
@@ -581,16 +580,16 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                                             {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                             Kirim Feedback
                                         </Button>
-                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit.</p>}
+                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit ya!</p>}
                                     </div>
                             </>
                         )}
                         <Separator className="my-4" />
                         <div className="text-center">
-                             <p className="text-sm text-gray-600 mb-3">Punya masukan atau unek-unek lain? Sampaikan secara anonim di sini ya!</p>
+                             <p className="text-sm text-gray-600 mb-3">Oiya kita punya form untuk curhat, saran, atau nyampein apapun soal Balista lewat form ini yaa!</p>
                              <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200">
                                  <Mail className="w-5 h-5" />
-                                 Kotak Curhat Aman
+                                 Kotak Curhat (Klik Disini)
                              </a>
                         </div>
                     </div>
