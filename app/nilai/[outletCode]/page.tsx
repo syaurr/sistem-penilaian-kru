@@ -12,6 +12,12 @@ import { supabase } from '@/lib/supabaseClient';
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
 
+declare global {
+    interface Window {
+        tiktok: any;
+    }
+}
+
 type CrewMember = {
     id: string;
     full_name: string;
@@ -53,6 +59,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
 
 
     // === DATA FETCHING ===
+    // Ganti useEffect utama Anda dengan versi yang sudah diperbaiki ini
     useEffect(() => {
         const fetchData = async () => {
             setIsLoading(true);
@@ -62,12 +69,12 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 const [crewRes, periodRes, tiktokRes] = await Promise.all([
                     fetch(`/api/crew/${params.outletCode}`),
                     fetch('/api/active-period'),
-                    fetch('/api/setting?key=tiktok_success_url') // Ambil link TikTok
+                    fetch('/api/setting?key=tiktok_success_url')
                 ]);
 
                 if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
                 if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
-                if (!tiktokRes.ok) throw new Error("Gagal memuat pengaturan.");
+                if (!tiktokRes.ok) throw new Error("Gagal memuat pengaturan video.");
 
                 const crewData = await crewRes.json();
                 const periodData = await periodRes.json();
@@ -77,6 +84,13 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 if (periodData && periodData.id) {
                     setActivePeriod(periodData);
                 }
+                
+                // --- PERBAIKAN DI SINI ---
+                // Tambahkan baris ini untuk menyimpan URL TikTok ke state
+                if (tiktokData && tiktokData.value) {
+                    setTiktokUrl(tiktokData.value);
+                }
+                // -------------------------
 
             } catch (err: any) {
                 setError(err.message);
@@ -109,15 +123,42 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
         fetchFeedbackHistory();
     }, [step, assessor, activePeriod]);
     
+    // Ganti useEffect untuk TikTok dengan versi yang lebih canggih ini
     useEffect(() => {
+        // Hanya jalankan jika kita berada di halaman 'success'
         if (step === 'success') {
-            const script = document.createElement('script');
-            script.src = 'https://www.tiktok.com/embed.js';
-            script.async = true;
-            document.body.appendChild(script);
-            return () => { document.body.removeChild(script); };
+
+            const loadTikTokScript = () => {
+                // Cek jika objek tiktok dan fungsi load-nya sudah ada
+                if (window.tiktok && typeof window.tiktok.load === 'function') {
+                    // "Panggil ulang" fungsi render dari TikTok
+                    window.tiktok.load();
+                }
+            };
+
+            // Cek jika script embed belum ada di halaman
+            if (!document.querySelector('script[src="https://www.tiktok.com/embed.js"]')) {
+                const script = document.createElement('script');
+                script.src = 'https://www.tiktok.com/embed.js';
+                script.async = true;
+
+                // Setelah script selesai dimuat, baru jalankan fungsinya
+                script.onload = loadTikTokScript;
+
+                document.body.appendChild(script);
+
+                return () => {
+                    // Hapus script saat komponen tidak lagi ditampilkan untuk kebersihan
+                    if (document.body.contains(script)) {
+                    document.body.removeChild(script);
+                    }
+                };
+            } else {
+                // Jika script sudah ada dari render sebelumnya, langsung panggil fungsinya
+                loadTikTokScript();
+            }
         }
-    }, [step]);
+    }, [step, tiktokUrl]); // Tambahkan tiktokUrl sebagai dependency
 
     // === HANDLER FUNCTIONS ===
     const handleStart = () => setStep('description');
