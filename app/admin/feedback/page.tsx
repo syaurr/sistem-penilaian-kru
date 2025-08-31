@@ -1,0 +1,173 @@
+'use client';
+
+
+
+import { useEffect, useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Legend, Cell } from 'recharts';
+import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
+
+type RecapData = {
+    periodName: string;
+    systemRecap: { averageScore: number; totalResponses: number };
+    hrRecap: { averageScore: number; totalResponses: number };
+    messages: { id: number; message: string; category: string | null }[];
+};
+
+const categoryColors: { [key: string]: string } = {
+    'Pesan': 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    'Masukan': 'bg-blue-100 text-blue-800 border-blue-200',
+
+};
+
+export default function FeedbackRecapPage() {
+    const [data, setData] = useState<RecapData | null>(null);
+    const [isLoading, setIsLoading] = useState(true);
+
+    const fetchData = async () => {
+        setIsLoading(true);
+        try {
+            const res = await fetch('/api/admin/feedback-recap');
+            if (!res.ok) throw new Error('Gagal memuat data rekapitulasi');
+            const result: RecapData = await res.json();
+            setData(result);
+        } catch (error: any) {
+            toast.error('Error', { description: error.message });
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+
+
+    const handleCategoryChange = async (id: number, newCategory: string) => {
+        setData(prevData => {
+            if (!prevData) return null;
+            return {
+                ...prevData,
+                messages: prevData.messages.map(msg => 
+                    msg.id === id ? { ...msg, category: newCategory } : msg
+                )
+            };
+        });
+
+        // Update database
+        try {
+            const response = await fetch('/api/admin/update-feedback-category', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id, category: newCategory })
+            });
+
+            if (!response.ok) throw new Error('Gagal update kategori');
+            toast.success('Kategori berhasil diperbarui');
+        } catch (error: any) {
+            toast.error('Update Gagal', { description: error.message });
+            // Revert UI on failure
+            fetchData();
+        }
+    };
+
+    const chartData = [
+        { name: 'Sistem & Tampilan', 'Rata-rata Skor': data?.systemRecap.averageScore },
+        { name: 'Performa Tim HR', 'Rata-rata Skor': data?.hrRecap.averageScore }
+
+    ];
+
+    const chartColors = ['#8884d8', '#82ca9d'];
+    if (isLoading) return <div>Loading...</div>;
+    if (!data) return <div>Tidak ada data untuk ditampilkan.</div>;
+
+    return (
+        <div className="space-y-6">
+            <h1 className="text-3xl font-bold">Rekapitulasi Feedback - {data.periodName}</h1>
+            <Card>
+                <CardHeader><CardTitle>Rata-rata Skor Penilaian (Skala 1-5)</CardTitle></CardHeader>
+                <CardContent>
+                    <p className="text-sm text-muted-foreground mb-4">Total Responden: {data.systemRecap.totalResponses}</p>
+                    <ResponsiveContainer width="100%" height={300}>
+                        <BarChart data={chartData} layout="vertical" margin={{ left: 20 }}>
+                            <XAxis type="number" domain={[0, 5]} />
+                            <YAxis type="category" dataKey="name" width={150} tick={{ fontSize: 14 }} />
+                            <Tooltip cursor={{ fill: '#f5f5f5' }} />
+                            <Bar dataKey="Rata-rata Skor" barSize={40}>
+                                {chartData.map((entry, index) => (
+                                    <Cell key={`cell-${index}`} fill={chartColors[index % chartColors.length]} />
+                                ))}
+                            </Bar>
+                        </BarChart>
+                    </ResponsiveContainer>
+                </CardContent>
+            </Card>
+
+            <Card>
+                <CardHeader><CardTitle>Saran & Masukan untuk Tim HR</CardTitle></CardHeader>
+                <CardContent>
+                    <Table className="table-fixed w-full">
+                        <TableHeader>
+                            <TableRow>
+                                <TableHead className="w-[50px]">No.</TableHead>
+                                {/* 3. Tambahkan class untuk membatasi lebar kolom */}
+                                <TableHead className="w-[85%]">Saran & Masukan</TableHead>
+                                <TableHead className="w-[160px]">Kategori</TableHead>
+                            </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                            {data.messages.map((item, index) => (
+                                <TableRow key={item.id}>
+                                    <TableCell>{index + 1}</TableCell>
+                                    <TableCell className="whitespace-normal break-words">
+                                        {item.message}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Select
+                                            value={item.category || ''}
+                                            onValueChange={(value) => handleCategoryChange(item.id, value)}
+                                        >
+                                            <SelectTrigger>
+                                                <SelectValue asChild>
+                                                    {/* 5. Tampilkan Badge berwarna jika ada kategori terpilih */}
+                                                    {item.category ? (
+                                                        <Badge variant="outline" className={cn("font-semibold", categoryColors[item.category])}>
+                                                            {item.category}
+                                                        </Badge>
+                                                    ) : (
+                                                        <span className="text-muted-foreground">Pilih Kategori...</span>
+                                                    )}
+                                                </SelectValue>
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="Pesan">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full bg-yellow-400"></div>
+                                                        Pesan
+                                                    </div>
+                                                </SelectItem>
+                                                <SelectItem value="Masukan">
+                                                     <div className="flex items-center gap-2">
+                                                        <div className="w-2 h-2 rounded-full bg-blue-400"></div>
+                                                        Masukan
+                                                    </div>
+                                                </SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                    </TableCell>
+                                </TableRow>
+                            ))}
+                        </TableBody>
+                    </Table>
+                </CardContent>
+            </Card>
+        </div>
+    );
+}

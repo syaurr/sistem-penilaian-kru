@@ -42,13 +42,14 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     const [message, setMessage] = useState<string | null>(null);
     const { outletCode } = params;
 
-    // State untuk feedback (lebih sederhana)
     const [systemRating, setSystemRating] = useState<string | null>(null);
     const [hrRating, setHrRating] = useState<string | null>(null);
     const [feedbackMessage, setFeedbackMessage] = useState('');
     const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
     const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
+
+    const [tiktokUrl, setTiktokUrl] = useState('');
 
 
     // === DATA FETCHING ===
@@ -57,27 +58,28 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
             setIsLoading(true);
             setError('');
             try {
-        const [crewRes, periodRes] = await Promise.all([
-            fetch(`/api/crew/${params.outletCode}`),
-            fetch('/api/active-period')
-        ]);
+                // Ambil semua data secara bersamaan
+                const [crewRes, periodRes, tiktokRes] = await Promise.all([
+                    fetch(`/api/crew/${params.outletCode}`),
+                    fetch('/api/active-period'),
+                    fetch('/api/setting?key=tiktok_success_url') // Ambil link TikTok
+                ]);
 
-        if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
-        if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
+                if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
+                if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
+                if (!tiktokRes.ok) throw new Error("Gagal memuat pengaturan.");
 
-        const crewData = await crewRes.json();
-        const periodData = await periodRes.json();
-
-        console.log("--- DATA AWAL DITERIMA ---");
-        console.log("Data Periode dari API:", periodData);
-
-        setAllCrew(crewData);
-        if (periodData && periodData.id) {
-            setActivePeriod(periodData);
-            console.log("State 'activePeriod' BERHASIL DIATUR:", periodData);
-        } else {
-            console.log("PERINGATAN: Tidak ada periode aktif yang ditemukan dari API.");
-        }
+                const crewData = await crewRes.json();
+                const periodData = await periodRes.json();
+                const tiktokData = await tiktokRes.json();
+                
+                setAllCrew(crewData);
+                if (periodData && periodData.id) {
+                    setActivePeriod(periodData);
+                }
+                if (tiktokData && tiktokData.value) {
+                    setTiktokUrl(tiktokData.value); // Simpan link ke state
+                }
 
             } catch (err: any) {
                 setError(err.message);
@@ -87,6 +89,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
         };
         fetchData();
     }, [params.outletCode]);
+
 
     useEffect(() => {
         const fetchFeedbackHistory = async () => {
@@ -515,6 +518,7 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 );
 
             case 'success':
+                const videoId = tiktokUrl.split('/video/')[1]?.split('?')[0] || '';
             return (
                 <div className="text-center space-y-4 py-8">
                     <h2 className="text-2xl font-bold text-green-600">
@@ -525,11 +529,19 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                         {/* Baca nama periode langsung dari objek 'activePeriod' */}
                         Kamu sudah menilai semua rekan kerjamu di outlet {outletCode.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
                     </p>
-                    <div className="mt-6">
-                        <blockquote className="tiktok-embed" cite="https://www.tiktok.com/@zachking/video/7229891992745938219" data-video-id="7229891992745938219" style={{ maxWidth: '605px', minWidth: '325px' }} >
-                            <section></section>
-                        </blockquote>
-                    </div>
+
+                    {videoId && (
+                        <div className="mt-6">
+                            <blockquote 
+                                className="tiktok-embed" 
+                                cite={tiktokUrl} 
+                                data-video-id={videoId} 
+                                style={{ maxWidth: '605px', minWidth: '325px' }}
+                            >
+                                <section></section>
+                            </blockquote>
+                        </div>
+                    )}
                     
                     <Separator className="my-8" />
 
