@@ -14,7 +14,9 @@ export async function POST(request: Request) {
 
         if (checkError) throw checkError;
         if (existingRankings && existingRankings.length > 0) {
-            return NextResponse.json({ message: "Periode ini sudah pernah diarsipkan sebelumnya." }, { status: 409 });
+            return NextResponse.json({ message: "Periode ini sudah pernah diarsipkan sebelumnya." }, { status: 409,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         // --- MENGGUNAKAN LOGIKA KALKULASI YANG SAMA DENGAN DASHBOARD ---
@@ -96,10 +98,12 @@ export async function POST(request: Request) {
         const { error: updateError } = await supabaseAdmin.from('assessment_periods').update({ is_active: false }).eq('id', period_id);
         if (updateError) throw updateError;
         
-        return NextResponse.json({ message: 'Periode berhasil diarsipkan!' });
+        return NextResponse.json({ message: 'Periode berhasil diarsipkan!' }, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error("Archive Period Error:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

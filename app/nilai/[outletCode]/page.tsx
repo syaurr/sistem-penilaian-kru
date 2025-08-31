@@ -77,12 +77,10 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
                 if (periodData && periodData.id) {
                     setActivePeriod(periodData);
                 }
-                if (tiktokData && tiktokData.value) {
-                    setTiktokUrl(tiktokData.value); // Simpan link ke state
-                }
 
             } catch (err: any) {
                 setError(err.message);
+                setAllCrew([]); 
             } finally {
                 setIsLoading(false);
             }
@@ -187,13 +185,16 @@ export default function AssessmentPage({ params }: { params: { outletCode: strin
     }
 
     const handleSubmitAssessment = async () => {
-        // 1. Ganti 'alert' dengan 'toast.warning' untuk validasi
-        if (!assessor || !assessed || Object.keys(scores).length !== aspects.length) {
-            toast.warning("Form Belum Lengkap", {
-                description: "Harap isi semua penilaian bintang sebelum mengirim.",
-            });
-            return;
-        }
+
+    setIsSubmitting(true);
+
+    if (!assessor || !assessed || Object.keys(scores).length !== aspects.length) {
+        toast.warning("Form Belum Lengkap", {
+            description: "Harap isi semua penilaian bintang sebelum mengirim.",
+        });
+        setIsSubmitting(false);
+        return;
+    }
 
         setIsSubmitting(true);
 

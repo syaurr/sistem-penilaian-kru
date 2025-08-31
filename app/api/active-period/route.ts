@@ -15,15 +15,15 @@ export async function GET() {
 
         if (error) {
             if (error.code === 'PGRST116') {
-                return NextResponse.json({ message: "Tidak ada periode aktif" }, { status: 404 });
+                return NextResponse.json({ message: "Tidak ada periode aktif" }, { headers: { 'Cache-Control': 'no-store' } });
             }
             throw error;
         }
 
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error("Error fetching active period:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { headers: { 'Cache-Control': 'no-store' } });
     }
 }

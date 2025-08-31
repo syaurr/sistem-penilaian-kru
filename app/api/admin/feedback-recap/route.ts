@@ -73,10 +73,12 @@ export async function GET() {
             messages: messages,
         };
 
-        return NextResponse.json(responseData);
+        return NextResponse.json(responseData, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error("Error fetching feedback recap:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

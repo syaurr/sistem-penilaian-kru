@@ -15,7 +15,7 @@ export async function GET(request: Request) {
             targetPeriod = data;
         } else {
             const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').eq('is_active', true).single();
-            if (error || !data) return NextResponse.json({ recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif" });
+            if (error || !data) return NextResponse.json({ recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif" }, { headers: { 'Cache-Control': 'no-store' } });
             targetPeriod = data;
         }
 
@@ -108,9 +108,11 @@ export async function GET(request: Request) {
             recapData: finalRankedData,
             activePeriodName: targetPeriod.name,
             chartData: chartData,
-        });
+        }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
         console.error("Error in full-recap API:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

@@ -6,7 +6,9 @@ export async function GET(request: Request) {
     const assessor_id = searchParams.get('assessor_id');
 
     if (!assessor_id) {
-        return NextResponse.json({ message: 'Assessor ID is required' }, { status: 400 });
+        return NextResponse.json({ message: 'Assessor ID is required' }, { status: 400,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 
     try {
@@ -18,7 +20,7 @@ export async function GET(request: Request) {
 
         // Jika tidak ada periode aktif, kembalikan array kosong (tidak ada riwayat)
         if (!activePeriod) {
-            return NextResponse.json([]);
+            return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
         }
 
         const { data, error } = await supabaseAdmin
@@ -32,11 +34,13 @@ export async function GET(request: Request) {
         }
         
         // Kirim kembali hanya array berisi ID
-        return NextResponse.json(data.map(item => item.assessed_id));
+        return NextResponse.json(data.map(item => item.assessed_id), { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         // Tetap simpan log error di server untuk pemantauan
         console.error("API /api/history Error:", error.message);
-        return NextResponse.json({ message: "Gagal memuat riwayat penilaian." }, { status: 500 });
+        return NextResponse.json({ message: "Gagal memuat riwayat penilaian." }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

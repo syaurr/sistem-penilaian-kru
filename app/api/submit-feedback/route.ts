@@ -10,7 +10,9 @@ export async function POST(request: Request) {
 
         // Validasi data inti
         if (!rating_sistem || !rating_hr || !assessor_id || !period_id) {
-            return NextResponse.json({ message: 'Data rating wajib diisi' }, { status: 400 });
+            return NextResponse.json({ message: 'Data rating wajib diisi' }, { status: 400,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         // Siapkan data yang akan dimasukkan ke database
@@ -40,10 +42,14 @@ export async function POST(request: Request) {
 
         if (error) throw error;
 
-        return NextResponse.json({ message: 'Feedback berhasil disimpan' }, { status: 201 });
+        return NextResponse.json({ message: 'Feedback berhasil disimpan' }, { status: 201,
+            headers: { 'Cache-Control': 'no-store' }
+        });
 
     } catch (error: any) {
         console.error("Error saving feedback:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

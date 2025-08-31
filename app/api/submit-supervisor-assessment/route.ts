@@ -7,7 +7,9 @@ export async function POST(request: Request) {
         const { supervisor_id, scores } = await request.json(); // scores akan berbentuk: [{ assessed_crew_id: 'uuid', score: 90 }]
 
         if (!supervisor_id || !scores || !Array.isArray(scores) || scores.length === 0) {
-            return NextResponse.json({ message: 'Data tidak lengkap' }, { status: 400 });
+            return NextResponse.json({ message: 'Data tidak lengkap' }, { status: 400,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         const { data: activePeriod, error: periodError } = await supabase
@@ -34,10 +36,14 @@ export async function POST(request: Request) {
 
         if (insertError) throw insertError;
 
-        return NextResponse.json({ message: 'Semua penilaian berhasil disimpan!' }, { status: 201 });
+        return NextResponse.json({ message: 'Semua penilaian berhasil disimpan!' }, { status: 201,
+            headers: { 'Cache-Control': 'no-store' }
+        });
 
     } catch (error: any) {
         console.error('Error submitting supervisor assessment:', error);
-        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
+        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

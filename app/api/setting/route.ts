@@ -8,7 +8,9 @@ export async function GET(request: Request) {
     const key = searchParams.get('key');
 
     if (!key) {
-        return NextResponse.json({ message: 'Key is required' }, { status: 400 });
+        return NextResponse.json({ message: 'Key is required' }, { status: 400,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 
     try {
@@ -20,8 +22,10 @@ export async function GET(request: Request) {
 
         if (error) throw error;
 
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

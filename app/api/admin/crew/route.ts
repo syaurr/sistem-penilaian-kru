@@ -9,9 +9,11 @@ export async function GET() {
             .select('*, outlets(id, name)')
             .order('full_name', { ascending: true });
         if (error) throw error;
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -21,9 +23,13 @@ export async function POST(request: Request) {
         const body = await request.json();
         const { error } = await supabase.from('crew').insert(body);
         if (error) throw error;
-        return NextResponse.json({ message: 'Kru berhasil dibuat' }, { status: 201 });
+        return NextResponse.json({ message: 'Kru berhasil dibuat' }, { status: 201,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -34,9 +40,11 @@ export async function PATCH(request: Request) {
         const { id, ...updateData } = body;
         const { error } = await supabase.from('crew').update(updateData).eq('id', id);
         if (error) throw error;
-        return NextResponse.json({ message: 'Kru berhasil diperbarui' });
+        return NextResponse.json({ message: 'Kru berhasil diperbarui' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -46,8 +54,10 @@ export async function DELETE(request: Request) {
         const { id } = await request.json();
         const { error } = await supabase.from('crew').delete().eq('id', id);
         if (error) throw error;
-        return NextResponse.json({ message: 'Kru berhasil dihapus' });
+        return NextResponse.json({ message: 'Kru berhasil dihapus' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

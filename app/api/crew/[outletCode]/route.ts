@@ -14,7 +14,9 @@ export async function GET(request: NextRequest) {
         const outletCode = segments[segments.length - 1]; // Ambil segmen terakhir ('KBP')
 
         if (!outletCode || outletCode === 'crew') {
-            return NextResponse.json({ message: 'Outlet code is missing from URL' }, { status: 400 });
+            return NextResponse.json({ message: 'Outlet code is missing from URL' }, { status: 400,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         // --- Sisa kode sama seperti sebelumnya ---
@@ -27,7 +29,9 @@ export async function GET(request: NextRequest) {
             .single();
 
         if (outletError || !outletData) {
-            return NextResponse.json({ message: `Outlet with code ${outletCode} not found` }, { status: 404 });
+            return NextResponse.json({ message: `Outlet with code ${outletCode} not found` }, { status: 404,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         // Ambil semua crew dari outlet_id yang ditemukan dan aktif
@@ -42,10 +46,12 @@ export async function GET(request: NextRequest) {
             throw crewError;
         }
 
-        return NextResponse.json(crewData);
+        return NextResponse.json(crewData, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error('Error fetching crew by outlet:', error);
-        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
+        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

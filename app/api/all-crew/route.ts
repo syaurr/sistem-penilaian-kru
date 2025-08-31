@@ -19,7 +19,7 @@ export async function GET() {
             throw new Error("Gagal mengambil data crew atau outlets dari database.");
         }
         if (!crewData || !outletsData) {
-             return NextResponse.json([]);
+             return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
         }
 
         const outletsMap = new Map(outletsData.map(o => [o.id, o.name]));
@@ -45,10 +45,10 @@ export async function GET() {
             return 0;
         });
 
-        return NextResponse.json(combinedData);
+        return NextResponse.json(combinedData, { headers: { 'Cache-Control': 'no-store' } });
         
     } catch (error: any) {
         console.error("Error di API /api/all-crew:", error.message);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { headers: { 'Cache-Control': 'no-store' } });
     }
 }

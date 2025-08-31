@@ -6,8 +6,10 @@ export async function GET() {
     try {
         const { data, error } = await supabase.from('outlets').select('id, name');
         if (error) throw error;
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

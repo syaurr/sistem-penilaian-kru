@@ -7,7 +7,9 @@ export async function GET(request: Request) {
     const gender = searchParams.get('gender');
 
     if (!role || !gender) {
-        return NextResponse.json({ message: 'Role and gender are required' }, { status: 400 });
+        return NextResponse.json({ message: 'Role and gender are required' }, { status: 400,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 
     try {
@@ -51,12 +53,14 @@ export async function GET(request: Request) {
         
         if (role !== 'leader') {
             const filteredForCrew = uniqueAspects.filter(a => a.aspect_key !== 'leadership');
-            return NextResponse.json(filteredForCrew);
+            return NextResponse.json(filteredForCrew, { headers: { 'Cache-Control': 'no-store' } });
         }
 
-        return NextResponse.json(uniqueAspects);
+        return NextResponse.json(uniqueAspects, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
-        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500 });
+        return NextResponse.json({ message: 'Internal Server Error', error: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

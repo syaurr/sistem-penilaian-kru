@@ -17,7 +17,7 @@ export async function GET(request: Request) {
                 .single();
 
             if (error) throw error;
-            return NextResponse.json({ data });
+            return NextResponse.json({ data }, { headers: { 'Cache-Control': 'no-store' } });
         }
 
         const { data, error } = await supabaseAdmin
@@ -26,9 +26,11 @@ export async function GET(request: Request) {
             .order('key', { ascending: true });
 
         if (error) throw error;
-        return NextResponse.json({ data });
+        return NextResponse.json({ data }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -37,7 +39,9 @@ export async function PATCH(request: Request) {
     try {
         const { key, value } = await request.json();
         if (!key || value === undefined) {
-            return NextResponse.json({ message: 'Key dan Value dibutuhkan' }, { status: 400 });
+            return NextResponse.json({ message: 'Key dan Value dibutuhkan' }, { status: 400,
+                headers: { 'Cache-Control': 'no-store' }
+            });
         }
 
         const { error } = await supabaseAdmin
@@ -47,8 +51,10 @@ export async function PATCH(request: Request) {
 
         if (error) throw error;
 
-        return NextResponse.json({ message: 'Pengaturan berhasil diperbarui' });
+        return NextResponse.json({ message: 'Pengaturan berhasil diperbarui' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

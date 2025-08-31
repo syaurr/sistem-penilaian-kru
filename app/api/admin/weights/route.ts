@@ -4,8 +4,10 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 // GET: Mengambil semua data bobot
 export async function GET() {
     const { data, error } = await supabaseAdmin.from('assessment_weights').select('*').order('id');
-    if (error) return NextResponse.json({ message: error.message }, { status: 500 });
-    return NextResponse.json(data);
+    if (error) return NextResponse.json({ message: error.message }, { status: 500,
+        headers: { 'Cache-Control': 'no-store' }
+    });
+    return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
 }
 
 // PATCH: Menerima array of updates dan menyimpannya
@@ -25,8 +27,10 @@ export async function PATCH(request: Request) {
 
         if (firstError?.error) throw firstError.error;
 
-        return NextResponse.json({ message: 'Semua bobot berhasil diperbarui' });
+        return NextResponse.json({ message: 'Semua bobot berhasil diperbarui' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

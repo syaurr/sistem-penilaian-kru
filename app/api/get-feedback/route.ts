@@ -10,7 +10,9 @@ export async function GET(request: NextRequest) {
     const period_id = searchParams.get('period_id');
 
     if (!assessor_id || !period_id) {
-        return NextResponse.json({ message: 'ID Penilai atau Periode tidak ada' }, { status: 400 });
+        return NextResponse.json({ message: 'ID Penilai atau Periode tidak ada' }, { status: 400,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 
     try {
@@ -22,9 +24,11 @@ export async function GET(request: NextRequest) {
 
         if (error) throw error;
 
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
         console.error("Error fetching feedback:", error);
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }

@@ -9,9 +9,11 @@ export async function GET() {
             .select('*')
             .order('name', { ascending: true });
         if (error) throw error;
-        return NextResponse.json(data);
+        return NextResponse.json(data, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -21,9 +23,13 @@ export async function POST(request: Request) {
         const body = await request.json();
         const { error } = await supabase.from('outlets').insert(body);
         if (error) throw error;
-        return NextResponse.json({ message: 'Outlet berhasil dibuat' }, { status: 201 });
+        return NextResponse.json({ message: 'Outlet berhasil dibuat' }, { status: 201,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -34,9 +40,11 @@ export async function PATCH(request: Request) {
         const { id, ...updateData } = body;
         const { error } = await supabase.from('outlets').update(updateData).eq('id', id);
         if (error) throw error;
-        return NextResponse.json({ message: 'Outlet berhasil diperbarui' });
+        return NextResponse.json({ message: 'Outlet berhasil diperbarui' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
 
@@ -47,8 +55,10 @@ export async function DELETE(request: Request) {
         // Peringatan: Menghapus outlet akan menghapus semua kru yang terkait karena kita set 'ON DELETE CASCADE'
         const { error } = await supabase.from('outlets').delete().eq('id', id);
         if (error) throw error;
-        return NextResponse.json({ message: 'Outlet berhasil dihapus' });
+        return NextResponse.json({ message: 'Outlet berhasil dihapus' }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-        return NextResponse.json({ message: error.message }, { status: 500 });
+        return NextResponse.json({ message: error.message }, { status: 500,
+            headers: { 'Cache-Control': 'no-store' }
+        });
     }
 }
