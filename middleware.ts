@@ -2,62 +2,64 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Buat response awal. Ini akan kita modifikasi nanti.
+  console.log(`--- [MIDDLEWARE] Menjaga rute: ${request.nextUrl.pathname} ---`);
+
   let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+    request: { headers: request.headers },
   })
 
-  // Buat Supabase client yang bisa berjalan di server (middleware).
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
+  // Cek apakah environment variables terbaca
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+  
+  console.log(`[MIDDLEWARE] Supabase URL terbaca: ${supabaseUrl ? 'YA' : 'TIDAK'}`);
+  console.log(`[MIDDLEWARE] Supabase Key terbaca: ${supabaseKey ? 'YA' : 'TIDAK'}`);
+
+  const supabase = createServerClient(supabaseUrl, supabaseKey, {
       cookies: {
         get(name: string) {
-          return request.cookies.get(name)?.value
+          const cookie = request.cookies.get(name)?.value;
+          console.log(`[MIDDLEWARE] Membaca cookie '${name}': ${cookie ? 'ADA' : 'TIDAK ADA'}`);
+          return cookie;
         },
         set(name: string, value: string, options: CookieOptions) {
-          // Jika kita perlu set cookie, kita harus update request dan response.
           request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          })
+          response = NextResponse.next({ request: { headers: request.headers } })
           response.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: CookieOptions) {
-          // Jika kita perlu hapus cookie, kita juga harus update request dan response.
           request.cookies.set({ name, value: '', ...options })
-          response = NextResponse.next({
-            request: { headers: request.headers },
-          })
+          response = NextResponse.next({ request: { headers: request.headers } })
           response.cookies.set({ name, value: '', ...options })
         },
       },
     }
   )
 
-  // Ambil data user dari session cookie yang ada di request.
-  const { data: { session } } = await supabase.auth.getSession()
+  console.log("[MIDDLEWARE] Mencoba mengambil session...");
+  const { data: { session } } = await supabase.auth.getSession();
 
-  // Jika TIDAK ADA session (user belum login) DAN mencoba akses halaman /admin
+  if (session) {
+      console.log("[MIDDLEWARE] HASIL: Ditemukan session untuk user:", session.user.email);
+  } else {
+      console.log("[MIDDLEWARE] HASIL: Tidak ditemukan session (dianggap belum login).");
+  }
+
+  // Logika redirect (tidak berubah)
   if (!session && request.nextUrl.pathname.startsWith('/admin')) {
-    // Arahkan ke halaman login
+    console.log("[MIDDLEWARE] KEPUTUSAN: Belum login, akses /admin ditolak -> redirect ke /login");
     return NextResponse.redirect(new URL('/login', request.url))
   }
   
-  // Jika ADA session (user sudah login) DAN mencoba akses halaman /login
   if (session && request.nextUrl.pathname.startsWith('/login')) {
-      // Arahkan ke dashboard admin
+      console.log("[MIDDLEWARE] KEPUTUSAN: Sudah login, akses /login ditolak -> redirect ke /admin");
       return NextResponse.redirect(new URL('/admin', request.url))
   }
 
-  // Jika semua kondisi aman, lanjutkan ke halaman yang dituju.
+  console.log("[MIDDLEWARE] KEPUTUSAN: Akses diizinkan.");
   return response
 }
 
-// Tentukan halaman mana saja yang akan dijaga oleh middleware ini.
 export const config = {
   matcher: ['/admin/:path*', '/login'],
 }
