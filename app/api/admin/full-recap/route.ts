@@ -3,6 +3,13 @@ import { supabaseAdmin } from '@/lib/supabaseAdmin';
 
 export const dynamic = 'force-dynamic';
 
+function noPeriodResponse() {
+    return NextResponse.json(
+        { recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif" },
+        { headers: { 'Cache-Control': 'no-store' } }
+    );
+}
+
 export async function GET(request: Request) {
     try {
         const { searchParams } = new URL(request.url);
@@ -11,11 +18,11 @@ export async function GET(request: Request) {
 
         if (requestedPeriodId) {
             const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').eq('id', requestedPeriodId).single();
-            if (error) throw new Error(`Periode historis tidak ditemukan.`);
+            if (error) return noPeriodResponse(); // Jika ID historis tidak ditemukan, anggap tidak ada periode
             targetPeriod = data;
         } else {
             const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').eq('is_active', true).single();
-            if (error || !data) return NextResponse.json({ recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif" }, { headers: { 'Cache-Control': 'no-store' } });
+            if (error || !data) return noPeriodResponse(); // Jika tidak ada periode aktif, kirim respons default
             targetPeriod = data;
         }
 
