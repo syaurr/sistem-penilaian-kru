@@ -136,22 +136,36 @@ export default function SupervisorPage() {
                 }))
             };
 
-            // --- PERBAIKAN URL SESUAI FILE YANG ANDA PUNYA ---
-            const response = await fetch('/api/submit-supervisors-assesment', { 
+            // PERHATIKAN URL INI: Harus SAMA PERSIS dengan nama folder Anda di app/api
+            // Cek apakah pakai 's' di supervisor? assesment atau assessment?
+            const response = await fetch('/api/submit-supervisor-assesment', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
+            // --- PERBAIKAN UTAMA: BACA SEBAGAI TEXT DULU ---
+            const responseText = await response.text();
+            
+            let data;
+            try {
+                // Coba ubah text jadi JSON
+                data = responseText ? JSON.parse(responseText) : {};
+            } catch (e) {
+                // Jika gagal (berarti server kirim HTML atau kosong), error-kan
+                console.error("Server Response (Non-JSON):", responseText);
+                throw new Error(`Error Server (${response.status}): Cek console untuk detail.`);
+            }
+
             if (!response.ok) {
-                const errData = await response.json();
-                throw new Error(errData.message || "Gagal menyimpan ke server.");
+                throw new Error(data.message || `Gagal menyimpan (${response.status}).`);
             }
 
             toast.success("Berhasil!", { description: "Penilaian supervisor telah disimpan." });
             setStep('success');
 
         } catch (error: any) {
+            console.error("Submit Error:", error);
             toast.error("Gagal Mengirim", { description: error.message });
         } finally {
             setIsSubmitting(false);
@@ -249,4 +263,4 @@ export default function SupervisorPage() {
             </Card>
         </div>
     );
-}
+};
