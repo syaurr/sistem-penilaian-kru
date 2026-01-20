@@ -7,11 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import Image from 'next/image';
 import { toast } from "sonner";
-import { supabase } from '@/lib/supabaseClient';
+import { supabase } from '@/lib/supabaseClient'; // Pastikan path ini benar
+import { Loader2 } from 'lucide-react';
 
-// Tipe data (tidak berubah)
+// Tipe data
 type Supervisor = { id: string; full_name: string; };
-type CrewToAssess = { id: string; full_name: string; outlets: { name: string } | null; role: string; };
+type CrewToAssess = { 
+    id: string; 
+    full_name: string; 
+    outlets: { name: string } | null; 
+    role: string; 
+};
 
 export default function SupervisorPage() {
     const [step, setStep] = useState<'login' | 'form' | 'success'>('login');
@@ -27,56 +33,69 @@ export default function SupervisorPage() {
         const fetchData = async () => {
             setIsLoading(true);
             try {
-                // Ambil semua data crew (termasuk supervisor) dan periode aktif
+                // --- BAGIAN INI SUDAH DIPERBAIKI (TIDAK LAGI PANGGIL API YANG HILANG) ---
+                // Kita ambil data langsung dari database Supabase
                 const [crewResponse, periodResponse] = await Promise.all([
-                    supabase.from('crew').select('id, full_name, role, outlets(name)').eq('is_active', true).order('full_name'),
-                    supabase.from('assessment_periods').select('name').eq('is_active', true).single()
+                    supabase
+                        .from('crew')
+                        .select('id, full_name, role, outlets(name)')
+                        .eq('is_active', true)
+                        .order('full_name'),
+                    supabase
+                        .from('assessment_periods')
+                        .select('id, name')
+                        .eq('is_active', true)
+                        .maybeSingle() 
                 ]);
 
-                const { data: allCrewData, error: crewError } = crewResponse;
-                const { data: periodData, error: periodError } = periodResponse;
-
-                if (crewError) throw new Error("Gagal mengambil data kru.");
-                if (periodError) throw new Error("Tidak ada periode penilaian yang aktif.");
-
-                if (allCrewData) {
-                    // Pisahkan data supervisor dan kru yang akan dinilai
-                    const supervisors = allCrewData.filter(c => c.role === 'supervisor');
-                    const crewToAssess = allCrewData.filter(c => c.role !== 'supervisor');
-
-                    // Logika Sorting Kru
-                    crewToAssess.sort((a, b) => {
-                        const outletA = (a.outlets as any)?.name || '';
-                        const outletB = (b.outlets as any)?.name || '';
-                        if (outletA < outletB) return -1;
-                        if (outletA > outletB) return 1;
-                        if (a.role === 'leader' && b.role !== 'leader') return -1;
-                        if (a.role !== 'leader' && b.role === 'leader') return 1;
-                        if (a.full_name < b.full_name) return -1;
-                        if (a.full_name > b.full_name) return 1;
-                        return 0;
-                    });
-                    
-                    // PERBAIKAN UTAMA: Pastikan state di-update dengan benar
-                    setSupervisorList(supervisors);
-                    setCrewList(
-                        crewToAssess.map(c => ({
-                            ...c,
-                            outlets: Array.isArray(c.outlets) 
-                                ? (c.outlets[0] ? { name: c.outlets[0].name } : null)
-                                : c.outlets
-                        }))
-                    );
+                if (crewResponse.error) throw crewResponse.error;
+                
+                // Cek Periode
+                if (!periodResponse.data) {
+                    throw new Error("Tidak ada periode penilaian yang aktif saat ini.");
                 }
+                setActivePeriodName(periodResponse.data.name);
 
-                setActivePeriodName(periodData?.name || 'Tidak Diketahui');
+                // Proses Data Kru
+                const allCrewData = crewResponse.data || [];
+                
+                // Filter Supervisor untuk Dropdown Login
+                const supervisors = allCrewData
+                    .filter(c => c.role === 'supervisor' || c.role === 'manager') 
+                    .map(s => ({ id: s.id, full_name: s.full_name }));
+
+                // Filter Kru untuk Dinilai (Semua selain supervisor/manager)
+                const crewToAssess = allCrewData
+                    .filter(c => c.role !== 'supervisor' && c.role !== 'manager')
+                    .map(c => {
+                        // Handle format outlet jika array atau object
+                        const outletData = Array.isArray(c.outlets) ? c.outlets[0] : c.outlets;
+                        return {
+                            id: c.id,
+                            full_name: c.full_name,
+                            role: c.role,
+                            outlets: outletData ? { name: outletData.name } : null
+                        };
+                    })
+                    // Sorting berdasarkan Outlet lalu Nama
+                    .sort((a, b) => {
+                        const outletA = a.outlets?.name || 'Z';
+                        const outletB = b.outlets?.name || 'Z';
+                        if (outletA !== outletB) return outletA.localeCompare(outletB);
+                        return a.full_name.localeCompare(b.full_name);
+                    });
+
+                setSupervisorList(supervisors);
+                setCrewList(crewToAssess);
 
             } catch (error: any) {
+                console.error("Fetch Error:", error);
                 toast.error("Gagal Memuat Data", { description: error.message });
             } finally {
                 setIsLoading(false);
             }
         };
+
         fetchData();
     }, []);
 
@@ -88,85 +107,142 @@ export default function SupervisorPage() {
         }
     };
 
-    const handleScoreChange = (crewId: string, score: string) => {
-        const value = parseInt(score, 10);
-        if (value >= 0 && value <= 100) {
+    const handleScoreChange = (crewId: string, scoreStr: string) => {
+        if (scoreStr === '') {
+            setScores(prev => ({ ...prev, [crewId]: '' }));
+            return;
+        }
+        const value = parseInt(scoreStr, 10);
+        if (!isNaN(value) && value >= 0 && value <= 100) {
             setScores(prev => ({ ...prev, [crewId]: value }));
-        } else if (score === '') {
-             setScores(prev => ({ ...prev, [crewId]: '' }));
         }
     };
 
     const handleSubmit = async () => {
+        const filledScores = Object.entries(scores).filter(([_, val]) => val !== '' && val !== null);
+        
+        if (filledScores.length < crewList.length) {
+            toast.warning("Data Belum Lengkap", { description: `Baru terisi ${filledScores.length} dari ${crewList.length} orang.` });
+            return;
+        }
+
         setIsSubmitting(true);
         try {
-            const scoresToSubmit = Object.entries(scores).filter(([_, score]) => score !== '' && score !== null).map(([crewId, score]) => ({ assessed_crew_id: crewId, score: Number(score) }));
-            if(scoresToSubmit.length !== crewList.length){ throw new Error('Harap isi semua nilai kru sebelum mengirim.'); }
-            const response = await fetch('/api/submit-supervisor-assessment', {
+            const payload = {
+                supervisor_id: selectedSupervisor?.id,
+                scores: filledScores.map(([crewId, score]) => ({
+                    assessed_crew_id: crewId,
+                    score: Number(score)
+                }))
+            };
+
+            // --- PERBAIKAN URL SESUAI FILE YANG ANDA PUNYA ---
+            const response = await fetch('/api/submit-supervisors-assesment', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ supervisor_id: selectedSupervisor?.id, scores: scoresToSubmit })
+                body: JSON.stringify(payload)
             });
-            if (!response.ok) { const errorData = await response.json(); throw new Error(errorData.message || "Gagal menyimpan penilaian."); }
-            toast.success("Penilaian Supervisor Berhasil!", { description: "Semua data nilai telah berhasil disimpan." });
+
+            if (!response.ok) {
+                const errData = await response.json();
+                throw new Error(errData.message || "Gagal menyimpan ke server.");
+            }
+
+            toast.success("Berhasil!", { description: "Penilaian supervisor telah disimpan." });
             setStep('success');
+
         } catch (error: any) {
-            toast.error("Gagal Mengirim", { description: error.message, });
+            toast.error("Gagal Mengirim", { description: error.message });
         } finally {
             setIsSubmitting(false);
         }
     };
     
-    if (isLoading) return <div className="text-center p-10">Memuat data...</div>;
+    if (isLoading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+                <Loader2 className="h-10 w-10 animate-spin text-green-700 mb-4" />
+                <p className="text-gray-500">Memuat data tim...</p>
+            </div>
+        );
+    }
 
     return (
-        <div className="flex justify-center items-start min-h-screen py-10 bg-gray-50">
-            <Card className="w-full max-w-2xl shadow-lg">
-                <CardHeader className="text-center">
+        <div className="flex justify-center items-start min-h-screen py-10 bg-gray-50 px-4">
+            <Card className="w-full max-w-3xl shadow-lg border-t-4 border-t-[#033F3F]">
+                <CardHeader className="text-center pb-2">
                     <div className="flex justify-center mb-4">
-                        <Image src="/logo.png" alt="Balista Logo" width={100} height={50} priority />
+                        <Image src="/logo.png" alt="Balista Logo" width={120} height={60} priority className="h-auto w-auto" />
                     </div>
-                    <CardTitle>Form Penilaian Supervisor</CardTitle>
-                    <CardDescription>Periode Penilaian: <strong>{activePeriodName}</strong></CardDescription>
+                    <CardTitle className="text-2xl text-[#033F3F]">Penilaian Supervisor</CardTitle>
+                    <CardDescription>
+                        Periode: <span className="font-semibold text-black">{activePeriodName}</span>
+                    </CardDescription>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="pt-6">
                     {step === 'login' && (
-                        <div>
-                            <p className="text-center mb-4 text-sm text-gray-600">Silakan pilih nama Anda untuk memulai.</p>
-                             <Select onValueChange={handleSelectSupervisor}>
-                                <SelectTrigger><SelectValue placeholder="-- Pilih Nama Anda --" /></SelectTrigger>
-                                <SelectContent>{supervisorList.map((s) => (<SelectItem key={s.id} value={s.id}>{s.full_name}</SelectItem>))}</SelectContent>
-                            </Select>
+                        <div className="space-y-4 max-w-md mx-auto">
+                            <div className="bg-blue-50 p-4 rounded-lg text-sm text-blue-800 text-center mb-6">
+                                Pilih nama Anda untuk memulai.
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Nama Supervisor / Manager</label>
+                                <Select onValueChange={handleSelectSupervisor}>
+                                    <SelectTrigger className="h-12 text-base">
+                                        <SelectValue placeholder="-- Pilih Nama Anda --" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {supervisorList.map((s) => (
+                                            <SelectItem key={s.id} value={s.id} className="py-3 cursor-pointer">
+                                                {s.full_name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
                         </div>
                     )}
                     {step === 'form' && (
-                        <div className="space-y-4">
-                            <p className="text-center text-sm">Anda mengisi sebagai: <strong>{selectedSupervisor?.full_name}</strong>. Mohon berikan nilai antara 1-100.</p>
-                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-3 border-t border-b py-4">
-                            {crewList.map(crew => (
-                                <div key={crew.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 gap-3 bg-gray-50 rounded-md">
-                                    <div>
-                                        <p className="font-medium">{crew.full_name}</p>
-                                        <p className="text-xs text-gray-500">{crew.outlets?.name || 'Outlet tidak diketahui'}</p>
-                                    </div>
-                                    <Input
-                                        type="number" min="0" max="100"
-                                        className="w-full sm:w-24"
-                                        value={scores[crew.id] || ''}
-                                        onChange={(e) => handleScoreChange(crew.id, e.target.value)}
-                                    />
-                                </div>
-                            ))}
+                        <div className="space-y-6">
+                            <div className="flex items-center justify-between bg-gray-100 p-3 rounded-md text-sm">
+                                <span>Penilai: <strong>{selectedSupervisor?.full_name}</strong></span>
+                                <span className="text-gray-500">{crewList.length} Orang Dinilai</span>
                             </div>
-                            <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full">
-                                {isSubmitting ? 'Menyimpan...' : 'Kirim Semua Penilaian'}
+                            <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+                                {crewList.map((crew, index) => (
+                                    <div key={crew.id} className={`flex flex-col sm:flex-row items-center justify-between p-4 rounded-lg border ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'} hover:border-green-300 transition-colors`}>
+                                        <div className="w-full sm:w-2/3 mb-3 sm:mb-0">
+                                            <div className="flex items-center gap-2">
+                                                <p className="font-semibold text-gray-800">{crew.full_name}</p>
+                                                {crew.role === 'leader' && <span className="text-[10px] bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded-full font-bold">LEADER</span>}
+                                            </div>
+                                            <p className="text-xs text-gray-500 uppercase tracking-wide mt-1">
+                                                {crew.outlets?.name || 'NO OUTLET'}
+                                            </p>
+                                        </div>
+                                        <div className="w-full sm:w-auto flex items-center gap-2">
+                                            <Input
+                                                type="number"
+                                                inputMode="numeric"
+                                                placeholder="0-100"
+                                                className={`w-full sm:w-24 text-center font-bold h-12 ${scores[crew.id] ? 'border-green-500 bg-green-50' : ''}`}
+                                                value={scores[crew.id] ?? ''}
+                                                onChange={(e) => handleScoreChange(crew.id, e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <Button onClick={handleSubmit} disabled={isSubmitting} className="w-full bg-[#033F3F] hover:bg-[#022020] h-12 text-lg font-medium">
+                                {isSubmitting ? (<><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Menyimpan...</>) : ('Kirim Hasil Penilaian')}
                             </Button>
                         </div>
                     )}
-                     {step === 'success' && (
-                        <div className="text-center space-y-4 py-8">
-                            <h2 className="text-2xl font-bold text-green-600">Penilaian Terkirim!</h2>
-                            <p>Data berhasil disimpan. Terima kasih.</p>
+                    {step === 'success' && (
+                        <div className="text-center py-12 space-y-4">
+                            <h2 className="text-2xl font-bold text-gray-800">Terima Kasih!</h2>
+                            <p>Data berhasil disimpan.</p>
+                            <Button variant="outline" onClick={() => window.location.reload()}>Kembali</Button>
                         </div>
                     )}
                 </CardContent>
