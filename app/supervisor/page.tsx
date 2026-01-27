@@ -136,25 +136,22 @@ export default function SupervisorPage() {
                 }))
             };
 
-            // PERHATIKAN URL INI: Harus SAMA PERSIS dengan nama folder Anda di app/api
-            // Cek apakah pakai 's' di supervisor? assesment atau assessment?
-            const response = await fetch('/api/submit-supervisor-assesment', { 
+            // PERBAIKAN: Ejaan 'assessment' (double s)
+            const response = await fetch('/api/submit-supervisor-assessment', { 
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
             });
 
-            // --- PERBAIKAN UTAMA: BACA SEBAGAI TEXT DULU ---
+            // Baca respons sebagai text untuk diagnosa jika error HTML
             const responseText = await response.text();
             
             let data;
             try {
-                // Coba ubah text jadi JSON
                 data = responseText ? JSON.parse(responseText) : {};
             } catch (e) {
-                // Jika gagal (berarti server kirim HTML atau kosong), error-kan
-                console.error("Server Response (Non-JSON):", responseText);
-                throw new Error(`Error Server (${response.status}): Cek console untuk detail.`);
+                console.error("Non-JSON Response:", responseText);
+                throw new Error(`Server Error (${response.status}): Kemungkinan salah alamat API.`);
             }
 
             if (!response.ok) {
