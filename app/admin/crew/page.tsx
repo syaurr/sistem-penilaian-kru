@@ -19,6 +19,7 @@ import Papa from 'papaparse';
 // Tipe data untuk kru dan outlet
 type Outlet = { id: string; name: string; };
 type Crew = { id: string; full_name: string; role: string; gender: string; is_active: boolean; outlets: Outlet | null; };
+type SortConfig = { key: keyof Crew | 'outlet_name'; direction: 'asc' | 'desc' } | null;
 
 // Skema validasi form dengan Zod
 const formSchema = z.object({
@@ -102,6 +103,9 @@ export default function ManageCrewPage() {
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingCrew, setEditingCrew] = useState<Crew | null>(null);
     const [showInactive, setShowInactive] = useState(false);
+    
+    // State untuk sorting
+    const [sortConfig, setSortConfig] = useState<SortConfig>(null);
 
     const form = useForm<z.infer<typeof formSchema>>({
         resolver: zodResolver(formSchema),
@@ -199,8 +203,46 @@ export default function ManageCrewPage() {
             toast.error("Error!", { description: error.message });
         }
     };
-    
+
+    // --- LOGIKA SORTING ---
+    const handleSort = (key: keyof Crew | 'outlet_name') => {
+        let direction: 'asc' | 'desc' = 'asc';
+        if (sortConfig && sortConfig.key === key && sortConfig.direction === 'asc') {
+            direction = 'desc';
+        }
+        setSortConfig({ key, direction });
+    };
+
     const filteredCrew = crewList.filter(crew => crew.is_active || showInactive);
+
+    const sortedCrew = [...filteredCrew].sort((a, b) => {
+        if (!sortConfig) return 0;
+        
+        const { key, direction } = sortConfig;
+        let aValue: any = a[key as keyof Crew];
+        let bValue: any = b[key as keyof Crew];
+
+        // Custom logic untuk outlet name
+        if (key === 'outlet_name') {
+            aValue = a.outlets?.name || '';
+            bValue = b.outlets?.name || '';
+        }
+        
+        // Custom logic untuk status aktif/nonaktif
+        if (key === 'is_active') {
+            aValue = a.is_active ? 1 : 0;
+            bValue = b.is_active ? 1 : 0;
+        }
+
+        if (aValue < bValue) return direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return direction === 'asc' ? 1 : -1;
+        return 0;
+    });
+
+    const getSortIcon = (columnName: keyof Crew | 'outlet_name') => {
+        if (sortConfig?.key !== columnName) return <span className="text-gray-400 ml-1">↕</span>;
+        return sortConfig.direction === 'asc' ? <span className="text-black ml-1">▲</span> : <span className="text-black ml-1">▼</span>;
+    };
 
     if(isLoading) return <div className="text-center p-10">Memuat data kru...</div>;
 
@@ -242,16 +284,38 @@ export default function ManageCrewPage() {
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>Nama Lengkap</TableHead>
-                            <TableHead>Outlet</TableHead>
-                            <TableHead>Role</TableHead>
-                            <TableHead>Status</TableHead>
+                            <TableHead className="w-[50px]">No.</TableHead>
+                            <TableHead 
+                                className="cursor-pointer select-none hover:bg-gray-50" 
+                                onClick={() => handleSort('full_name')}
+                            >
+                                Nama Lengkap {getSortIcon('full_name')}
+                            </TableHead>
+                            <TableHead 
+                                className="cursor-pointer select-none hover:bg-gray-50" 
+                                onClick={() => handleSort('outlet_name')}
+                            >
+                                Outlet {getSortIcon('outlet_name')}
+                            </TableHead>
+                            <TableHead 
+                                className="cursor-pointer select-none hover:bg-gray-50" 
+                                onClick={() => handleSort('role')}
+                            >
+                                Role {getSortIcon('role')}
+                            </TableHead>
+                            <TableHead 
+                                className="cursor-pointer select-none hover:bg-gray-50" 
+                                onClick={() => handleSort('is_active')}
+                            >
+                                Status {getSortIcon('is_active')}
+                            </TableHead>
                             <TableHead className="text-right">Aksi</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
-                        {filteredCrew.map(crew => (
+                        {sortedCrew.map((crew, index) => (
                             <TableRow key={crew.id} className={!crew.is_active ? 'bg-gray-100' : ''}>
+                                <TableCell className="font-medium text-gray-500">{index + 1}</TableCell>
                                 <TableCell className="font-medium">{crew.full_name}</TableCell>
                                 <TableCell>{crew.outlets?.name || 'N/A'}</TableCell>
                                 <TableCell className="capitalize">{crew.role}</TableCell>
@@ -276,6 +340,14 @@ export default function ManageCrewPage() {
                                 </TableCell>
                             </TableRow>
                         ))}
+                        
+                        {sortedCrew.length === 0 && (
+                            <TableRow>
+                                <TableCell colSpan={6} className="text-center py-6 text-gray-500">
+                                    Tidak ada data kru yang ditemukan.
+                                </TableCell>
+                            </TableRow>
+                        )}
                     </TableBody>
                 </Table>
             </div>
