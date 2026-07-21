@@ -7,15 +7,18 @@ import { exportToPdf } from '@/lib/pdfGenerator';
 import { Progress } from "@/components/ui/progress";
 import { AspectChart } from '@/components/charts/AspectChart';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
+import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
 
-// Tipe data dengan tambahan missingAssessors
+// Menambahkan field untuk status submit penilai
 type RecapData = {
     id: string; nama: string; outlet: string; role: string;
     aspectScores: { [key: string]: { score: number; max_score: number; } };
     totalNilaiCrew: number; nilaiSupervisor1: number; nilaiSupervisor2: number;
     totalNilaiAkhir: number; rank: number; bonusStatus: string;
     totalPotentialAssessors: number; actualAssessorsCount: number;
-    missingAssessors?: string[]; // TAMBAHAN BARU: Array nama yang belum menilai
+    targetAssessmentsToSubmit: number; 
+    submittedAssessmentsCount: number;
+    submissionStatus: 'none' | 'partial' | 'completed';
 };
 
 const aspectDisplayNames: { [key: string]: string } = { leadership: "Kepemimpinan", preparation: "Persiapan", cashier: "Penerimaan", order_making: "Pembuatan", packing: "Pengemasan", stock_opname: "Stock Opname", cleanliness: "Kebersihan" };
@@ -91,7 +94,6 @@ export default function AdminDashboard() {
             </div>
             
             <Accordion type="multiple" className="w-full space-y-4" defaultValue={['peringkat', 'performa']}>
-                {/* 1. BAGIAN TABEL PERINGKAT */}
                 <AccordionItem value="peringkat" className="border rounded-lg bg-white">
                     <AccordionTrigger className="text-xl font-bold px-6">
                         Peringkat Kinerja Kru
@@ -102,7 +104,7 @@ export default function AdminDashboard() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[50px]">Peringkat</TableHead>
-                                        <TableHead className="min-w-[200px]">Nama Kru - Outlet & Progress</TableHead>
+                                        <TableHead>Nama Kru & Status Penilaian</TableHead>
                                         {aspectOrder.map(key => (<TableHead key={key} className="text-center">{aspectDisplayNames[key]}</TableHead>))}
                                         <TableHead className="text-center font-bold">Total Kru</TableHead>
                                         <TableHead className="text-center">Spv 1</TableHead>
@@ -115,23 +117,39 @@ export default function AdminDashboard() {
                                         <TableRow key={recap.id}>
                                             <TableCell className="font-bold text-center">{recap.rank}</TableCell>
                                             <TableCell>
-                                                <div className="font-medium">{recap.nama}</div>
-                                                <div className="text-xs text-muted-foreground">{recap.outlet}</div>
+                                                <div className="font-medium text-base">{recap.nama}</div>
+                                                <div className="text-xs text-muted-foreground mb-2">{recap.outlet}</div>
+                                                
+                                                {/* WARNING STATUS PENILAIAN */}
+                                                <div className="mb-2">
+                                                    {recap.submissionStatus === 'none' && (
+                                                        <span className="inline-flex items-center text-xs font-semibold text-red-700 bg-red-100 px-2 py-1 rounded-md">
+                                                            <AlertCircle className="w-3 h-3 mr-1" />
+                                                            Belum Menilai ({recap.submittedAssessmentsCount}/{recap.targetAssessmentsToSubmit})
+                                                        </span>
+                                                    )}
+                                                    {recap.submissionStatus === 'partial' && (
+                                                        <span className="inline-flex items-center text-xs font-semibold text-amber-700 bg-amber-100 px-2 py-1 rounded-md">
+                                                            <AlertTriangle className="w-3 h-3 mr-1" />
+                                                            Belum Beres ({recap.submittedAssessmentsCount}/{recap.targetAssessmentsToSubmit})
+                                                        </span>
+                                                    )}
+                                                    {recap.submissionStatus === 'completed' && recap.targetAssessmentsToSubmit > 0 && (
+                                                        <span className="inline-flex items-center text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-1 rounded-md">
+                                                            <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                            Selesai Menilai
+                                                        </span>
+                                                    )}
+                                                </div>
+
+                                                {/* PROGRESS BAR (Penilaian Diterima) */}
                                                 {recap.totalPotentialAssessors > 0 && (
-                                                    <div className="mt-2 w-full max-w-[200px]">
-                                                        <div className="flex justify-between text-xs text-muted-foreground mb-1">
+                                                    <div className="mt-1 w-32">
+                                                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
                                                             <span>Dinilai oleh:</span>
                                                             <span>{recap.actualAssessorsCount} / {recap.totalPotentialAssessors}</span>
                                                         </div>
-                                                        <Progress value={(recap.actualAssessorsCount / recap.totalPotentialAssessors) * 100} className="h-1 mb-1" />
-                                                        
-                                                        {/* --- TAMBAHAN BARU: Daftar yang belum menilai --- */}
-                                                        {recap.missingAssessors && recap.missingAssessors.length > 0 && (
-                                                            <div className="text-[11px] text-red-500 font-medium leading-tight mt-1 bg-red-50 p-1 rounded border border-red-100">
-                                                                <span className="font-semibold block">Belum menilai:</span>
-                                                                {recap.missingAssessors.join(', ')}
-                                                            </div>
-                                                        )}
+                                                        <Progress value={(recap.actualAssessorsCount / recap.totalPotentialAssessors) * 100} className="h-1" />
                                                     </div>
                                                 )}
                                             </TableCell>
@@ -153,7 +171,7 @@ export default function AdminDashboard() {
                                 </TableBody>
                                 <TableFooter>
                                     <TableRow>
-                                        <TableCell colSpan={11} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
+                                        <TableCell colSpan={10} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
                                         <TableCell className="text-center font-extrabold text-xl text-primary">{averageFinalScore.toFixed(2)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
@@ -162,7 +180,6 @@ export default function AdminDashboard() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* 2. BAGIAN CHART */}
                 <AccordionItem value="performa" className="border rounded-lg bg-white">
                      <AccordionTrigger className="text-xl font-bold px-6">
                         Performa Aspek Terbaik
