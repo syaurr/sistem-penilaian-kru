@@ -239,52 +239,81 @@ export default function AdminDashboard() {
                         <AccordionTrigger className="text-lg font-bold px-6 text-red-700 hover:no-underline">
                             <div className="flex items-center gap-2">
                                 <AlertTriangle className="w-5 h-5" />
-                                System Debugging Panel (Admin Only)
+                                System Debugging Panel (Cek Data Masuk)
                             </div>
                         </AccordionTrigger>
                         <AccordionContent className="px-6 pb-6">
-                            <div className="space-y-4 font-mono text-sm text-slate-800">
-                                <p className="text-red-600 font-semibold mb-4">
-                                    Gunakan panel ini jika merasa data di aplikasi/database tidak sinkron dengan tabel di atas.
-                                </p>
+                            <div className="space-y-6 font-mono text-sm text-slate-800">
                                 
                                 <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-white p-4 rounded border border-red-200">
                                     <div className="col-span-2 md:col-span-1"><strong>Period ID Aktif:</strong> <br/><span className="text-xs text-gray-500 break-all">{debugInfo.periodId}</span></div>
-                                    <div><strong>Total Kru (Aktif) DB:</strong> <br/><span className="text-lg font-bold">{debugInfo.totalCrewActiveFetched}</span> orang</div>
-                                    <div><strong>Total Form (Kru):</strong> <br/><span className="text-lg font-bold">{debugInfo.totalAssessmentsFetched}</span> form</div>
+                                    <div><strong>Total Kru (Aktif):</strong> <br/><span className="text-lg font-bold">{debugInfo.totalCrewActiveFetched}</span> orang</div>
+                                    <div><strong>Total Form Ditarik:</strong> <br/><span className="text-lg font-bold text-blue-600">{debugInfo.totalAssessmentsFetched}</span> form</div>
                                     <div><strong>Total Form (SPV):</strong> <br/><span className="text-lg font-bold">{debugInfo.totalSpvAssessmentsFetched}</span> form</div>
                                     <div><strong>Baris Bobot Nilai:</strong> <br/><span className="text-lg font-bold">{debugInfo.totalWeightsFetched}</span> baris</div>
                                 </div>
 
-                                {debugInfo.missingWeightKeys && debugInfo.missingWeightKeys.length > 0 ? (
-                                    <div className="bg-red-100 text-red-900 p-4 rounded border border-red-300">
-                                        <h4 className="font-bold mb-2 text-red-700 flex items-center gap-2">
-                                            <AlertCircle className="w-4 h-4" /> 
-                                            PERINGATAN: Kunci Bobot (Weight Keys) Tidak Ditemukan!
-                                        </h4>
-                                        <p className="mb-3 text-xs leading-relaxed">
-                                            Sistem mendeteksi ada formulir penilaian yang sudah disubmit, tetapi sistem tidak dapat mencocokkannya dengan tabel <code>assessment_weights</code> di database Supabase. Akibatnya nilai-nilai ini tidak bisa dikalkulasi (dihitung sebagai 0).
-                                        </p>
-                                        <div className="bg-white/60 p-3 rounded-md mb-3">
-                                            <ul className="list-disc pl-5 space-y-1">
-                                                {debugInfo.missingWeightKeys.map((key: string) => (
-                                                    <li key={key} className="font-bold">{key}</li>
-                                                ))}
-                                            </ul>
-                                        </div>
-                                        <p className="mt-2 text-xs">
-                                            <strong>Solusi:</strong> Buka Supabase, pergi ke tabel <code>assessment_weights</code>. Pastikan ada baris untuk role, gender, dan aspek yang ejaan serta huruf besar-kecilnya <strong>SAMA PERSIS</strong> dengan list di atas.
-                                        </p>
-                                    </div>
-                                ) : (
-                                    <div className="bg-green-100 text-green-800 p-4 rounded border border-green-300 flex items-center gap-2">
-                                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                                        <div>
-                                            <strong>Status Kalkulasi Bobot Aman.</strong>
-                                            <div className="text-xs mt-1">Tidak ditemukan *mismatch* format teks antara data kru dan tabel <code>assessment_weights</code>.</div>
-                                        </div>
+                                {/* WARNING: Jika ada form yang tidak masuk periode mana pun */}
+                                {debugInfo.nullPeriodCount > 0 && (
+                                    <div className="bg-red-100 text-red-900 p-4 rounded border border-red-400 font-bold">
+                                        ⚠️ BAHAYA: Ada {debugInfo.nullPeriodCount} Form Penilaian di Database yang tidak terhubung ke Periode manapun (period_id kosong/null)! Form ini tidak akan pernah muncul di dashboard. Silakan periksa halaman input form penilaian Anda.
                                     </div>
                                 )}
+
+                                {/* PELACAKAN RAW DATA: SIAPA MENILAI SIAPA */}
+                                <div className="border border-red-200 rounded-lg overflow-hidden bg-white">
+                                    <div className="bg-red-100 px-4 py-2 font-bold text-red-800">
+                                        Lacak Form Masuk Berdasarkan Periode Aktif
+                                    </div>
+                                    <div className="p-4 bg-gray-50 text-xs mb-2">
+                                        Jika di database ada 4 form, tapi di sini cuma terdaftar 1 form, berarti 3 form lainnya tersimpan di <strong>Periode yang Salah</strong> atau <strong>period_id-nya Kosong</strong>.
+                                    </div>
+                                    <div className="max-h-80 overflow-y-auto">
+                                        <Table>
+                                            <TableHeader className="bg-gray-100 sticky top-0">
+                                                <TableRow>
+                                                    <TableHead className="font-bold text-black w-1/3">Nama Kru (Yang Dinilai)</TableHead>
+                                                    <TableHead className="font-bold text-black w-[150px] text-center">Total Form Ditarik</TableHead>
+                                                    <TableHead className="font-bold text-black">Daftar Orang Yang Menilai</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {Object.entries(debugInfo.rawAssessmentTracking || {}).map(([assessedName, assessors]: [string, any]) => (
+                                                    <TableRow key={assessedName}>
+                                                        <TableCell className="font-bold">{assessedName}</TableCell>
+                                                        <TableCell className="text-center font-bold text-blue-600 bg-blue-50">
+                                                            {assessors.length}
+                                                        </TableCell>
+                                                        <TableCell className="leading-relaxed">
+                                                            {assessors.join(', ')}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                ))}
+                                                {Object.keys(debugInfo.rawAssessmentTracking || {}).length === 0 && (
+                                                    <TableRow>
+                                                        <TableCell colSpan={3} className="text-center py-4 text-gray-500">Belum ada satupun form penilaian yang masuk untuk periode ini.</TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+                                </div>
+
+                                {/* WARNING: BOBOT (Sudah ada dari kode sebelumnya) */}
+                                {debugInfo.missingWeightKeys && debugInfo.missingWeightKeys.length > 0 && (
+                                    <div className="bg-orange-50 text-orange-900 p-4 rounded border border-orange-300">
+                                        <h4 className="font-bold mb-2 text-orange-700 flex items-center gap-2">
+                                            <AlertCircle className="w-4 h-4" /> 
+                                            Ada Bobot Aspek yang Hilang!
+                                        </h4>
+                                        <ul className="list-disc pl-5 space-y-1 text-xs">
+                                            {debugInfo.missingWeightKeys.map((key: string) => (
+                                                <li key={key} className="font-bold">{key}</li>
+                                            ))}
+                                        </ul>
+                                    </div>
+                                )}
+
                             </div>
                         </AccordionContent>
                     </AccordionItem>
