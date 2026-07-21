@@ -40,6 +40,17 @@ export async function GET(request: Request) {
         const { data: allSupervisorAssessments } = supervisorAssessmentsResponse;
         const { data: weights } = weightsResponse;
 
+        console.log("=== DEBUGGING INFO ===");
+        console.log("1. Period ID aktif:", periodId);
+        console.log("2. Jumlah Crew (aktif):", allCrew?.length);
+        console.log("3. Jumlah Penilaian Crew (assessments):", allAssessments?.length);
+        console.log("4. Jumlah Penilaian SPV:", allSupervisorAssessments?.length);
+        
+        // Cek sample data bobot untuk melihat format stringnya
+        const sampleWeights = weights?.slice(0, 3).map(w => `${w.role}-${w.gender}-${w.aspect_key}`);
+        console.log("5. Sample Format Weights DB:", sampleWeights);
+        console.log("======================");
+
         if (!allCrew || !allAssessments || !allSupervisorAssessments || !weights) throw new Error("Gagal mengambil data lengkap.");
 
         const assessmentsByCrew = new Map<string, any[]>();
