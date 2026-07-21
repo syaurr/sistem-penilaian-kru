@@ -5,7 +5,7 @@ export const dynamic = 'force-dynamic';
 
 function noPeriodResponse() {
     return NextResponse.json(
-        { recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif" },
+        { recapData: [], chartData: {}, activePeriodName: "Tidak Ada Periode Aktif", debugInfo: null },
         { headers: { 'Cache-Control': 'no-store' } }
     );
 }
@@ -29,7 +29,6 @@ export async function GET(request: Request) {
         const periodId = targetPeriod.id;
         const [crewResponse, assessmentsResponse, supervisorAssessmentsResponse, weightsResponse] = await Promise.all([
             supabaseAdmin.from('crew').select('id, full_name, role, gender, outlet_id, outlets(name)').eq('is_active', true),
-            // TAMBAHAN: ambil assessor_id juga
             supabaseAdmin.from('assessments').select('assessor_id, assessed_id, scores').eq('period_id', periodId),
             supabaseAdmin.from('supervisor_assessments').select('assessed_crew_id, score').eq('period_id', periodId),
             supabaseAdmin.from('assessment_weights').select('*'),
@@ -40,28 +39,15 @@ export async function GET(request: Request) {
         const { data: allSupervisorAssessments } = supervisorAssessmentsResponse;
         const { data: weights } = weightsResponse;
 
-        console.log("=== DEBUGGING INFO ===");
-        console.log("1. Period ID aktif:", periodId);
-        console.log("2. Jumlah Crew (aktif):", allCrew?.length);
-        console.log("3. Jumlah Penilaian Crew (assessments):", allAssessments?.length);
-        console.log("4. Jumlah Penilaian SPV:", allSupervisorAssessments?.length);
-        
-        // Cek sample data bobot untuk melihat format stringnya
-        const sampleWeights = weights?.slice(0, 3).map(w => `${w.role}-${w.gender}-${w.aspect_key}`);
-        console.log("5. Sample Format Weights DB:", sampleWeights);
-        console.log("======================");
-
         if (!allCrew || !allAssessments || !allSupervisorAssessments || !weights) throw new Error("Gagal mengambil data lengkap.");
 
         const assessmentsByCrew = new Map<string, any[]>();
-        const submittedAssessmentsByCrew = new Map<string, number>(); // TAMBAHAN: track jumlah submit
+        const submittedAssessmentsByCrew = new Map<string, number>(); 
         
         allAssessments.forEach(a => {
-            // Track penilaian yang diterima
             if (!assessmentsByCrew.has(a.assessed_id)) assessmentsByCrew.set(a.assessed_id, []);
             assessmentsByCrew.get(a.assessed_id)?.push(a);
 
-            // Track penilaian yang dibuat/disubmit oleh kru ini
             if (a.assessor_id) {
                 submittedAssessmentsByCrew.set(a.assessor_id, (submittedAssessmentsByCrew.get(a.assessor_id) || 0) + 1);
             }
@@ -84,6 +70,9 @@ export async function GET(request: Request) {
             return acc;
         }, {} as Record<string, number>);
 
+        // --- DEBUGGING COLLECTOR ---
+        const missingWeightKeys = new Set<string>();
+
         let recapData = allCrew.filter(crew => crew.role !== 'supervisor').map(crew => {
             const crewAssessments = assessmentsByCrew.get(crew.id) || [];
             const supervisorScores = supervisorAssessmentsByCrew.get(crew.id) || [];
@@ -100,9 +89,18 @@ export async function GET(request: Request) {
             let totalNilaiCrew = 0;
             for (const aspectKey in aspectRatings) {
                 const avgRating = aspectRatings[aspectKey].reduce((a, b) => a + b, 0) / aspectRatings[aspectKey].length;
-                const maxScore = weightsMap.get(`${crew.role}-${crew.gender}-${aspectKey}`) || 0;
-                const weightedScore = (avgRating / 5) * maxScore;
-                aspectScores[aspectKey] = { score: weightedScore, max_score: maxScore };
+                
+                // Cek apakah format role-gender-aspect cocok dengan database bobot
+                const weightKey = `${crew.role}-${crew.gender}-${aspectKey}`;
+                const maxScore = weightsMap.get(weightKey);
+                
+                if (maxScore === undefined) {
+                    missingWeightKeys.add(weightKey); // Rekam jika tidak ada kecocokan
+                }
+                
+                const finalMaxScore = maxScore || 0;
+                const weightedScore = (avgRating / 5) * finalMaxScore;
+                aspectScores[aspectKey] = { score: weightedScore, max_score: finalMaxScore };
                 totalNilaiCrew += weightedScore;
             }
             
@@ -113,7 +111,6 @@ export async function GET(request: Request) {
             const totalPotentialAssessors = (crewByOutlet[crew.outlet_id] || 1) - 1;
             const actualAssessorsCount = crewAssessments.length;
 
-            // TAMBAHAN LOGIKA WARNING: Target harus dinilai dan jumlah disubmit
             const targetAssessmentsToSubmit = totalPotentialAssessors;
             const submittedAssessmentsCount = submittedAssessmentsByCrew.get(crew.id) || 0;
             let submissionStatus = 'completed';
@@ -130,12 +127,11 @@ export async function GET(request: Request) {
                 id: crew.id, nama: crew.full_name, outlet: (crew.outlets as any)?.name || 'N/A', role: crew.role,
                 aspectScores, totalNilaiCrew, nilaiSupervisor1, nilaiSupervisor2, totalNilaiAkhir,
                 totalPotentialAssessors, actualAssessorsCount,
-                targetAssessmentsToSubmit, submittedAssessmentsCount, submissionStatus // Data status diteruskan
+                targetAssessmentsToSubmit, submittedAssessmentsCount, submissionStatus
             };
         });
 
         recapData.sort((a, b) => b.totalNilaiAkhir - a.totalNilaiAkhir);
-        
         const finalRankedData = recapData.map((item, index) => ({ ...item, rank: index + 1 }));
 
         const chartData: { [key: string]: any[] } = {};
@@ -148,10 +144,22 @@ export async function GET(request: Request) {
                 .slice(0, 3);
         });
 
+        // Kumpulkan data debugging untuk Frontend
+        const debugInfo = {
+            periodId,
+            totalCrewActiveFetched: allCrew.length,
+            totalCrewEvaluated: recapData.length,
+            totalAssessmentsFetched: allAssessments.length,
+            totalSpvAssessmentsFetched: allSupervisorAssessments.length,
+            totalWeightsFetched: weights.length,
+            missingWeightKeys: Array.from(missingWeightKeys)
+        };
+
         return NextResponse.json({
             recapData: finalRankedData,
             activePeriodName: targetPeriod.name,
             chartData: chartData,
+            debugInfo: debugInfo
         }, { headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
         console.error("Error in full-recap API:", error);
