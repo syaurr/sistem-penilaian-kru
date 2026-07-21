@@ -8,13 +8,14 @@ import { Progress } from "@/components/ui/progress";
 import { AspectChart } from '@/components/charts/AspectChart';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
-// Tipe data (tidak berubah)
+// Tipe data dengan tambahan missingAssessors
 type RecapData = {
     id: string; nama: string; outlet: string; role: string;
     aspectScores: { [key: string]: { score: number; max_score: number; } };
     totalNilaiCrew: number; nilaiSupervisor1: number; nilaiSupervisor2: number;
     totalNilaiAkhir: number; rank: number; bonusStatus: string;
     totalPotentialAssessors: number; actualAssessorsCount: number;
+    missingAssessors?: string[]; // TAMBAHAN BARU: Array nama yang belum menilai
 };
 
 const aspectDisplayNames: { [key: string]: string } = { leadership: "Kepemimpinan", preparation: "Persiapan", cashier: "Penerimaan", order_making: "Pembuatan", packing: "Pengemasan", stock_opname: "Stock Opname", cleanliness: "Kebersihan" };
@@ -58,12 +59,11 @@ export default function AdminDashboard() {
         fetchData();
     }, []);
 
-    // --- LOGIKA BARU: Hitung rata-rata nilai akhir ---
     const averageFinalScore = useMemo(() => {
         if (recapData.length === 0) return 0;
         const totalScore = recapData.reduce((sum, crew) => sum + crew.totalNilaiAkhir, 0);
         return totalScore / recapData.length;
-    }, [recapData]); // Akan dihitung ulang hanya jika recapData berubah
+    }, [recapData]);
 
     if (isLoading) return <div className="text-center p-10">Memuat data rekapitulasi...</div>;
     if (error) return <div className="text-center p-10 text-red-500">Error: {error}</div>;
@@ -90,9 +90,8 @@ export default function AdminDashboard() {
                 </div>
             </div>
             
-            {/* === BAGIAN BARU: Gunakan Accordion untuk membungkus tabel dan chart === */}
             <Accordion type="multiple" className="w-full space-y-4" defaultValue={['peringkat', 'performa']}>
-                {/* 1. BAGIAN TABEL PERINGKAT (SEKARANG DI ATAS) */}
+                {/* 1. BAGIAN TABEL PERINGKAT */}
                 <AccordionItem value="peringkat" className="border rounded-lg bg-white">
                     <AccordionTrigger className="text-xl font-bold px-6">
                         Peringkat Kinerja Kru
@@ -103,7 +102,7 @@ export default function AdminDashboard() {
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead className="w-[50px]">Peringkat</TableHead>
-                                        <TableHead>Nama Kru - Outlet & Progress</TableHead>
+                                        <TableHead className="min-w-[200px]">Nama Kru - Outlet & Progress</TableHead>
                                         {aspectOrder.map(key => (<TableHead key={key} className="text-center">{aspectDisplayNames[key]}</TableHead>))}
                                         <TableHead className="text-center font-bold">Total Kru</TableHead>
                                         <TableHead className="text-center">Spv 1</TableHead>
@@ -119,12 +118,20 @@ export default function AdminDashboard() {
                                                 <div className="font-medium">{recap.nama}</div>
                                                 <div className="text-xs text-muted-foreground">{recap.outlet}</div>
                                                 {recap.totalPotentialAssessors > 0 && (
-                                                    <div className="mt-2 w-32">
+                                                    <div className="mt-2 w-full max-w-[200px]">
                                                         <div className="flex justify-between text-xs text-muted-foreground mb-1">
                                                             <span>Dinilai oleh:</span>
                                                             <span>{recap.actualAssessorsCount} / {recap.totalPotentialAssessors}</span>
                                                         </div>
-                                                        <Progress value={(recap.actualAssessorsCount / recap.totalPotentialAssessors) * 100} className="h-1" />
+                                                        <Progress value={(recap.actualAssessorsCount / recap.totalPotentialAssessors) * 100} className="h-1 mb-1" />
+                                                        
+                                                        {/* --- TAMBAHAN BARU: Daftar yang belum menilai --- */}
+                                                        {recap.missingAssessors && recap.missingAssessors.length > 0 && (
+                                                            <div className="text-[11px] text-red-500 font-medium leading-tight mt-1 bg-red-50 p-1 rounded border border-red-100">
+                                                                <span className="font-semibold block">Belum menilai:</span>
+                                                                {recap.missingAssessors.join(', ')}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 )}
                                             </TableCell>
@@ -144,12 +151,9 @@ export default function AdminDashboard() {
                                         </TableRow>
                                     ))}
                                 </TableBody>
-                                {/* --- BAGIAN BARU: Table Footer untuk Rata-rata --- */}
                                 <TableFooter>
                                     <TableRow>
-                                        {/* Gabungkan semua kolom sebelum kolom terakhir */}
                                         <TableCell colSpan={11} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
-                                        {/* Tampilkan rata-rata di kolom terakhir */}
                                         <TableCell className="text-center font-extrabold text-xl text-primary">{averageFinalScore.toFixed(2)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
@@ -158,7 +162,7 @@ export default function AdminDashboard() {
                     </AccordionContent>
                 </AccordionItem>
 
-                {/* 2. BAGIAN CHART (SEKARANG DI BAWAH) */}
+                {/* 2. BAGIAN CHART */}
                 <AccordionItem value="performa" className="border rounded-lg bg-white">
                      <AccordionTrigger className="text-xl font-bold px-6">
                         Performa Aspek Terbaik
