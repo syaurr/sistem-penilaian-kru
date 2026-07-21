@@ -18,18 +18,19 @@ export async function GET(request: Request) {
 
         if (requestedPeriodId) {
             const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').eq('id', requestedPeriodId).single();
-            if (error) return noPeriodResponse(); // Jika ID historis tidak ditemukan, anggap tidak ada periode
+            if (error) return noPeriodResponse(); 
             targetPeriod = data;
         } else {
             const { data, error } = await supabaseAdmin.from('assessment_periods').select('*').eq('is_active', true).single();
-            if (error || !data) return noPeriodResponse(); // Jika tidak ada periode aktif, kirim respons default
+            if (error || !data) return noPeriodResponse(); 
             targetPeriod = data;
         }
 
         const periodId = targetPeriod.id;
         const [crewResponse, assessmentsResponse, supervisorAssessmentsResponse, weightsResponse] = await Promise.all([
             supabaseAdmin.from('crew').select('id, full_name, role, gender, outlet_id, outlets(name)').eq('is_active', true),
-            supabaseAdmin.from('assessments').select('assessed_id, scores').eq('period_id', periodId),
+            // TAMBAHAN: ambil assessor_id juga
+            supabaseAdmin.from('assessments').select('assessor_id, assessed_id, scores').eq('period_id', periodId),
             supabaseAdmin.from('supervisor_assessments').select('assessed_crew_id, score').eq('period_id', periodId),
             supabaseAdmin.from('assessment_weights').select('*'),
         ]);
@@ -42,9 +43,17 @@ export async function GET(request: Request) {
         if (!allCrew || !allAssessments || !allSupervisorAssessments || !weights) throw new Error("Gagal mengambil data lengkap.");
 
         const assessmentsByCrew = new Map<string, any[]>();
+        const submittedAssessmentsByCrew = new Map<string, number>(); // TAMBAHAN: track jumlah submit
+        
         allAssessments.forEach(a => {
+            // Track penilaian yang diterima
             if (!assessmentsByCrew.has(a.assessed_id)) assessmentsByCrew.set(a.assessed_id, []);
             assessmentsByCrew.get(a.assessed_id)?.push(a);
+
+            // Track penilaian yang dibuat/disubmit oleh kru ini
+            if (a.assessor_id) {
+                submittedAssessmentsByCrew.set(a.assessor_id, (submittedAssessmentsByCrew.get(a.assessor_id) || 0) + 1);
+            }
         });
 
         const supervisorAssessmentsByCrew = new Map<string, number[]>();
@@ -69,12 +78,14 @@ export async function GET(request: Request) {
             const supervisorScores = supervisorAssessmentsByCrew.get(crew.id) || [];
             const aspectScores: { [key: string]: { score: number; max_score: number } } = {};
             const aspectRatings: { [key: string]: number[] } = {};
+            
             crewAssessments.forEach(assessment => {
                 for (const aspectKey in assessment.scores) {
                     if (!aspectRatings[aspectKey]) aspectRatings[aspectKey] = [];
                     aspectRatings[aspectKey].push(assessment.scores[aspectKey]);
                 }
             });
+            
             let totalNilaiCrew = 0;
             for (const aspectKey in aspectRatings) {
                 const avgRating = aspectRatings[aspectKey].reduce((a, b) => a + b, 0) / aspectRatings[aspectKey].length;
@@ -83,6 +94,7 @@ export async function GET(request: Request) {
                 aspectScores[aspectKey] = { score: weightedScore, max_score: maxScore };
                 totalNilaiCrew += weightedScore;
             }
+            
             const nilaiSupervisor1 = supervisorScores[0] || 0;
             const nilaiSupervisor2 = supervisorScores[1] || 0;
             let totalSupervisorScore = supervisorScores.length > 0 ? supervisorScores.reduce((a, b) => a + b, 0) / supervisorScores.length : 0;
@@ -90,10 +102,24 @@ export async function GET(request: Request) {
             const totalPotentialAssessors = (crewByOutlet[crew.outlet_id] || 1) - 1;
             const actualAssessorsCount = crewAssessments.length;
 
+            // TAMBAHAN LOGIKA WARNING: Target harus dinilai dan jumlah disubmit
+            const targetAssessmentsToSubmit = totalPotentialAssessors;
+            const submittedAssessmentsCount = submittedAssessmentsByCrew.get(crew.id) || 0;
+            let submissionStatus = 'completed';
+            
+            if (targetAssessmentsToSubmit > 0) {
+                if (submittedAssessmentsCount === 0) {
+                    submissionStatus = 'none';
+                } else if (submittedAssessmentsCount < targetAssessmentsToSubmit) {
+                    submissionStatus = 'partial';
+                }
+            }
+
             return {
                 id: crew.id, nama: crew.full_name, outlet: (crew.outlets as any)?.name || 'N/A', role: crew.role,
                 aspectScores, totalNilaiCrew, nilaiSupervisor1, nilaiSupervisor2, totalNilaiAkhir,
-                totalPotentialAssessors, actualAssessorsCount
+                totalPotentialAssessors, actualAssessorsCount,
+                targetAssessmentsToSubmit, submittedAssessmentsCount, submissionStatus // Data status diteruskan
             };
         });
 
