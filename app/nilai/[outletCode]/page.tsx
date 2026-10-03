@@ -1,119 +1,181 @@
 'use client';
 
-// Import hooks dan komponen yang kita butuhkan
-import { useEffect, useState, use } from 'react';
+import { useEffect, useState, useCallback, use } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Star, Mail, Loader2 } from 'lucide-react';
+import { Star, Mail, Loader2, Users, Briefcase, BadgeCheck, ChevronLeft, ChevronRight, CheckCircle2, ArrowRight } from 'lucide-react';
 import Image from 'next/image';
 import { supabase } from '@/lib/supabaseClient';
 import { toast } from "sonner";
 import { Textarea } from "@/components/ui/textarea";
+import ReactMarkdown from 'react-markdown';
 
-declare global {
-    interface Window {
-        tiktok: any;
-    }
+// Types
+type Outlet = { id: string; name: string; outlet_code: string; area_type: string; };
+type CrewMember = { id: string; full_name: string; role: 'crew' | 'leader'; gender: 'male' | 'female'; };
+type Assessor = { id: string; full_name: string; code: string; };
+type Aspect = { aspect_key: string; aspect_name: string; };
+type AspectDesc = { id: number; aspect_key: string; area_type: string; description_text: string; };
+
+type AssessorType = 'crew' | 'specialist';
+type Step = 'welcome' | 'selectAssessorType' | 'selectAssessor' | 'selectAssessed' | 'rating' | 'success';
+
+// ─── Framer Motion Variants ───
+const slideVariants = {
+    enter: (dir: number) => ({ x: dir > 0 ? 300 : -300, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir: number) => ({ x: dir > 0 ? -300 : 300, opacity: 0 }),
+};
+
+// ─── Rating Card Component (Isolated for perf) ───
+function RatingCard({ value, selected, onSelect }: { value: number; selected: boolean; onSelect: () => void }) {
+    const labels = ['', 'Sangat Kurang', 'Kurang', 'Cukup', 'Baik', 'Sangat Baik'];
+    const colors = ['', 'bg-red-500', 'bg-orange-400', 'bg-yellow-400', 'bg-emerald-400', 'bg-emerald-600'];
+    const emojis = ['', '😞', '😕', '😐', '😊', '🤩'];
+
+    return (
+        <motion.button
+            type="button"
+            onClick={onSelect}
+            whileTap={{ scale: 0.92 }}
+            whileHover={{ scale: 1.05 }}
+            className={`
+                relative flex flex-col items-center justify-center gap-1
+                w-full aspect-square rounded-2xl border-2 transition-colors
+                ${selected
+                    ? `${colors[value]} border-transparent text-white shadow-lg shadow-[${colors[value]}]/30`
+                    : 'bg-white border-gray-200 hover:border-[#033F3F]/40 text-gray-700'
+                }
+            `}
+        >
+            <span className="text-2xl sm:text-3xl">{emojis[value]}</span>
+            <span className="text-[11px] sm:text-xs font-bold leading-tight text-center px-1">{labels[value]}</span>
+            <span className={`text-lg font-black ${selected ? 'text-white' : 'text-gray-400'}`}>{value}</span>
+        </motion.button>
+    );
 }
 
-type CrewMember = {
-    id: string;
-    full_name: string;
-    role: 'crew' | 'leader' | 'supervisor';
-    gender: 'male' | 'female';
-};
+// ─── Wizard Progress Bar ───
+function WizardProgress({ current, total }: { current: number; total: number }) {
+    const pct = ((current + 1) / total) * 100;
+    return (
+        <div className="w-full mb-4">
+            <div className="flex justify-between items-center mb-1.5">
+                <span className="text-xs font-semibold text-[#033F3F]">Aspek {current + 1} dari {total}</span>
+                <span className="text-xs font-bold text-[#033F3F]">{Math.round(pct)}%</span>
+            </div>
+            <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                <motion.div
+                    className="h-full bg-gradient-to-r from-[#033F3F] to-emerald-500 rounded-full"
+                    animate={{ width: `${pct}%` }}
+                    transition={{ type: 'spring', stiffness: 200, damping: 25 }}
+                />
+            </div>
+        </div>
+    );
+}
 
-type Aspect = {
-    aspect_key: string;
-    aspect_name: string;
-};
-
-type Step = 'welcome' | 'description' | 'selectAssessor' | 'selectAssessed' | 'rating' | 'success';
-
-// Komponen utama halaman kita
 export default function AssessmentPage({ params }: { params: Promise<{ outletCode: string }> }) {
-    // === STATE MANAGEMENT (VERSI DIPERBAIKI) ===
+    const { outletCode } = use(params);
+
+    // UI states
     const [step, setStep] = useState<Step>('welcome');
+    const [isLoading, setIsLoading] = useState(true);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+
+    // Data states
+    const [outlet, setOutlet] = useState<Outlet | null>(null);
     const [allCrew, setAllCrew] = useState<CrewMember[]>([]);
-    const [assessor, setAssessor] = useState<CrewMember | null>(null);
+    const [specialists, setSpecialists] = useState<Assessor[]>([]);
+    const [descriptions, setDescriptions] = useState<AspectDesc[]>([]);
+    const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
+    const [tiktokUrl, setTiktokUrl] = useState('');
+
+    // Selection states
+    const [assessorType, setAssessorType] = useState<AssessorType | null>(null);
+
+    // Assessor Info
+    const [assessorId, setAssessorId] = useState<string>('');
+    const [assessorName, setAssessorName] = useState<string>('');
+    const [assessorCode, setAssessorCode] = useState<string>('');
+
     const [assessed, setAssessed] = useState<CrewMember | null>(null);
     const [remainingToAssess, setRemainingToAssess] = useState<CrewMember[]>([]);
     const [aspects, setAspects] = useState<Aspect[]>([]);
     const [scores, setScores] = useState<Record<string, number>>({});
-    const [isLoading, setIsLoading] = useState(true);
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [message, setMessage] = useState<string | null>(null);
-    const { outletCode } = use(params);
 
+    // Wizard states
+    const [currentAspectIndex, setCurrentAspectIndex] = useState(0);
+    const [direction, setDirection] = useState(0);
+
+    // Feedback states
     const [systemRating, setSystemRating] = useState<string | null>(null);
     const [hrRating, setHrRating] = useState<string | null>(null);
     const [feedbackMessage, setFeedbackMessage] = useState('');
-    const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
     const [hasSubmittedFeedback, setHasSubmittedFeedback] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
 
-    const [tiktokUrl, setTiktokUrl] = useState('');
-
-
-    // === DATA FETCHING ===
-    // Ganti useEffect utama Anda dengan versi yang sudah diperbaiki ini
     useEffect(() => {
-        const fetchData = async () => {
+        const fetchInitialData = async () => {
             setIsLoading(true);
             setError('');
             try {
-                // Ambil semua data secara bersamaan
-                const [crewRes, periodRes, tiktokRes] = await Promise.all([
+                const [crewRes, periodRes, tiktokRes, specialistsRes] = await Promise.all([
                     fetch(`/api/crew/${outletCode}`),
                     fetch('/api/active-period'),
-                    fetch('/api/setting?key=tiktok_success_url')
+                    fetch('/api/setting?key=tiktok_success_url'),
+                    fetch('/api/assessors')
                 ]);
 
-                if (!crewRes.ok) throw new Error("Gagal memuat data kru.");
-                if (!periodRes.ok) throw new Error("Gagal memuat data periode.");
-                if (!tiktokRes.ok) throw new Error("Gagal memuat pengaturan video.");
+                if (!crewRes.ok) throw new Error("Gagal memuat data outlet/kru.");
 
                 const crewData = await crewRes.json();
-                const periodData = await periodRes.json();
-                const tiktokData = await tiktokRes.json();
-                
-                setAllCrew(crewData);
-                if (periodData && periodData.id) {
-                    setActivePeriod(periodData);
-                }
-                
-                // --- PERBAIKAN DI SINI ---
-                // Tambahkan baris ini untuk menyimpan URL TikTok ke state
-                if (tiktokData && tiktokData.value) {
-                    setTiktokUrl(tiktokData.value);
-                }
-                // -------------------------
+                setAllCrew(crewData.crew);
+                setOutlet(crewData.outlet);
 
+                if (periodRes.ok) {
+                    const pData = await periodRes.json();
+                    if (pData && pData.id) setActivePeriod(pData);
+                }
+
+                if (tiktokRes.ok) {
+                    const tData = await tiktokRes.json();
+                    if (tData && tData.value) setTiktokUrl(tData.value);
+                }
+
+                if (specialistsRes.ok) {
+                    const sData = await specialistsRes.json();
+                    setSpecialists(sData);
+                }
+
+                if (crewData.outlet) {
+                    const descRes = await fetch(`/api/aspect-descriptions?area_type=${crewData.outlet.area_type}`);
+                    if (descRes.ok) {
+                        const descData = await descRes.json();
+                        setDescriptions(descData);
+                    }
+                }
             } catch (err: any) {
                 setError(err.message);
-                setAllCrew([]); 
             } finally {
                 setIsLoading(false);
             }
         };
-        fetchData();
+        fetchInitialData();
     }, [outletCode]);
-
 
     useEffect(() => {
         const fetchFeedbackHistory = async () => {
-            if (step === 'success' && assessor && activePeriod) {
+            if (step === 'success' && assessorId && activePeriod) {
                 try {
-                    const res = await fetch(`/api/get-feedback?assessor_id=${assessor.id}&period_id=${activePeriod.id}`);
-                    if (!res.ok) return;
-                    const history: { category: string, rating: string }[] = await res.json();
-                    if (history.length > 0) {
-                        setHasSubmittedFeedback(true);
-                    } else {
-                        setHasSubmittedFeedback(false);
+                    const res = await fetch(`/api/get-feedback?assessor_id=${assessorId}&period_id=${activePeriod.id}`);
+                    if (res.ok) {
+                        const history = await res.json();
+                        if (history.length > 0) setHasSubmittedFeedback(true);
                     }
                 } catch (err) {
                     console.error("Gagal memuat riwayat feedback", err);
@@ -121,90 +183,102 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
             }
         };
         fetchFeedbackHistory();
-    }, [step, assessor, activePeriod]);
-    
-    // Ganti useEffect untuk TikTok dengan versi yang lebih canggih ini
-    useEffect(() => {
-        // Hanya jalankan jika kita berada di halaman 'success'
-        if (step === 'success') {
+    }, [step, assessorId, activePeriod]);
 
+    useEffect(() => {
+        if (step === 'success') {
             const loadTikTokScript = () => {
-                // Cek jika objek tiktok dan fungsi load-nya sudah ada
                 if (window.tiktok && typeof window.tiktok.load === 'function') {
-                    // "Panggil ulang" fungsi render dari TikTok
                     window.tiktok.load();
+                } else {
+                    const script = document.createElement('script');
+                    script.src = "https://www.tiktok.com/embed.js";
+                    script.async = true;
+                    document.body.appendChild(script);
                 }
             };
-
-            // Cek jika script embed belum ada di halaman
-            if (!document.querySelector('script[src="https://www.tiktok.com/embed.js"]')) {
-                const script = document.createElement('script');
-                script.src = 'https://www.tiktok.com/embed.js';
-                script.async = true;
-
-                // Setelah script selesai dimuat, baru jalankan fungsinya
-                script.onload = loadTikTokScript;
-
-                document.body.appendChild(script);
-
-                return () => {
-                    // Hapus script saat komponen tidak lagi ditampilkan untuk kebersihan
-                    if (document.body.contains(script)) {
-                    document.body.removeChild(script);
-                    }
-                };
-            } else {
-                // Jika script sudah ada dari render sebelumnya, langsung panggil fungsinya
-                loadTikTokScript();
-            }
+            const timer = setTimeout(loadTikTokScript, 500);
+            return () => clearTimeout(timer);
         }
-    }, [step, tiktokUrl]); // Tambahkan tiktokUrl sebagai dependency
+    }, [step]);
 
-    // === HANDLER FUNCTIONS ===
-    const handleStart = () => setStep('description');
-    const handleStartAssessment = () => setStep('selectAssessor');
+    // ─── Handlers ───
+    const handleSelectType = (type: AssessorType) => {
+        setAssessorType(type);
+        if (type === 'crew') setAssessorCode('crew');
+        setStep('selectAssessor');
+    };
 
-    const handleSelectAssessor = async (assessorId: string) => {
-        const selected = allCrew.find(crew => crew.id === assessorId);
-        if (selected) {
-            console.log("--- NAMA PENILAI DIPILIH ---");
-            console.log("Data Penilai yang Dipilih:", selected);
-            setAssessor(selected);
-            console.log("State 'assessor' BERHASIL DIATUR:", selected);
-            setAssessor(selected); // Cukup atur state assessor
-            setIsLoading(true);
-            try {
-                const historyResponse = await fetch(`/api/history?assessor_id=${assessorId}`);
-                const assessedIds: string[] = await historyResponse.json();
-                const unassessedCrew = allCrew.filter(
-                    crew => crew.id !== assessorId && !assessedIds.includes(crew.id)
-                );
-                setRemainingToAssess(unassessedCrew);
+    const handleSelectAssessor = async (value: string) => {
+        if (assessorType === 'crew') {
+            const selected = allCrew.find(c => c.id === value);
+            if (selected) {
+                setAssessorId(selected.id);
+                setAssessorName(selected.full_name);
+                setAssessorCode('crew');
+                const remaining = allCrew.filter(c => c.id !== selected.id);
 
-                if (unassessedCrew.length === 0) {
-                    setStep('success');
+                if (activePeriod) {
+                    try {
+                        const historyRes = await fetch(`/api/history?assessor_id=${selected.id}&period_id=${activePeriod.id}`);
+                        if (historyRes.ok) {
+                            const historyData = await historyRes.json();
+                            const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
+                            setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
+                        } else {
+                            setRemainingToAssess(remaining);
+                        }
+                    } catch { setRemainingToAssess(remaining); }
                 } else {
-                    setStep('selectAssessed');
+                    setRemainingToAssess(remaining);
                 }
-            } catch (err) {
-                setError("Gagal memuat riwayat penilaian.");
-            } finally {
-                setIsLoading(false);
+                setStep('selectAssessed');
+            }
+        } else {
+            const selected = specialists.find(s => s.id === value);
+            if (selected) {
+                setAssessorId('');
+                setAssessorName(selected.full_name);
+                setAssessorCode(selected.code);
+                const remaining = [...allCrew];
+
+                if (activePeriod) {
+                    try {
+                        const historyRes = await fetch(`/api/history?assessor_code=${selected.code}&period_id=${activePeriod.id}`);
+                        if (historyRes.ok) {
+                            const historyData = await historyRes.json();
+                            const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
+                            setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
+                        } else {
+                            setRemainingToAssess(remaining);
+                        }
+                    } catch { setRemainingToAssess(remaining); }
+                } else {
+                    setRemainingToAssess(remaining);
+                }
+                setStep('selectAssessed');
             }
         }
     };
 
-    const handleSelectAssessed = async (assessedId: string) => {
-        if (!assessedId) return;
-        const selected = remainingToAssess.find(crew => crew.id === assessedId);
+    const handleSelectAssessed = async (targetId: string) => {
+        const selected = remainingToAssess.find(c => c.id === targetId);
         if (selected) {
             setAssessed(selected);
             setIsLoading(true);
             try {
-                const response = await fetch(`/api/assessment-aspects?role=${selected.role}&gender=${selected.gender}`);
+                const response = await fetch(`/api/assessment-aspects?assessor_code=${assessorCode}&role=${selected.role}&gender=${selected.gender}`);
                 const aspectsData = await response.json();
                 if (!response.ok) throw new Error("Gagal mengambil data aspek");
+
+                if (aspectsData.length === 0) {
+                    toast.warning("Info", { description: "Asesor ini tidak memiliki aspek penilaian untuk role target." });
+                }
+
                 setAspects(aspectsData);
+                setScores({});
+                setCurrentAspectIndex(0);
+                setDirection(0);
                 setStep('rating');
             } catch (err: any) {
                 setError(err.message);
@@ -214,66 +288,77 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
         }
     };
 
-    const handleRatingChange = (aspect_key: string, value: number) => {
+    const handleRatingChange = useCallback((aspect_key: string, value: number) => {
         setScores(prev => ({ ...prev, [aspect_key]: value }));
+
+        // Auto-slide after 400ms delay
+        setTimeout(() => {
+            setDirection(1);
+            setCurrentAspectIndex(prev => {
+                const next = prev + 1;
+                // If this was the last aspect, stay on last to show "Submit"
+                if (next >= aspects.length) return prev;
+                return next;
+            });
+        }, 400);
+    }, [aspects.length]);
+
+    const goToAspect = (targetIndex: number) => {
+        if (targetIndex < 0 || targetIndex >= aspects.length) return;
+        setDirection(targetIndex > currentAspectIndex ? 1 : -1);
+        setCurrentAspectIndex(targetIndex);
     };
-    
+
     const backToSelectCrew = () => {
         setAssessed(null);
         setScores({});
         setAspects([]);
+        setCurrentAspectIndex(0);
         setStep('selectAssessed');
-    }
+    };
 
     const handleSubmitAssessment = async () => {
-
-    setIsSubmitting(true);
-
-    if (!assessor || !assessed || Object.keys(scores).length !== aspects.length) {
-        toast.warning("Form Belum Lengkap", {
-            description: "Harap isi semua penilaian bintang sebelum mengirim.",
-        });
-        setIsSubmitting(false);
-        return;
-    }
+        if (!assessed || Object.keys(scores).length !== aspects.length) {
+            toast.warning("Form Belum Lengkap", {
+                description: "Harap isi semua penilaian sebelum mengirim.",
+            });
+            return;
+        }
 
         setIsSubmitting(true);
-
         try {
-            const periodResponse = await fetch('/api/active-period');
-            if (!periodResponse.ok) {
-                const errorData = await periodResponse.json();
-                throw new Error(errorData.message || "Tidak bisa menemukan periode aktif.");
-            }
-            const activePeriod: { id: string } = await periodResponse.json();
+            if (!activePeriod) throw new Error("Tidak bisa menemukan periode aktif.");
 
-            const { error: insertError } = await supabase
-                .from('assessments')
-                .insert({
+            const response = await fetch('/api/submit-assessment', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
                     period_id: activePeriod.id,
-                    assessor_id: assessor.id,
+                    assessor_id: assessorId,
                     assessed_id: assessed.id,
                     scores,
-                });
+                    assessor_code: assessorCode,
+                }),
+            });
 
-            if (insertError) throw insertError;
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.message || 'Gagal menyimpan penilaian.');
 
-            // 2. Ganti 'setMessage' dengan 'toast.success'
             toast.success("Penilaian Berhasil!", {
                 description: `Penilaian untuk ${assessed.full_name} telah berhasil disimpan.`,
             });
-            
-            const updatedRemaining = remainingToAssess.filter(crew => crew.id !== assessed.id);
+
+            const updatedRemaining = remainingToAssess.filter(c => c.id !== assessed.id);
             setRemainingToAssess(updatedRemaining);
-            
+
             if (updatedRemaining.length === 0) {
                 setStep('success');
             } else {
-                backToSelectCrew();
+                // Show success animation briefly, then auto-reset
+                setStep('success');
+                // We let user choose to continue via button
             }
-
         } catch (error: any) {
-            // 3. Ganti 'setError' dengan 'toast.error'
             toast.error("Terjadi Kesalahan", {
                 description: error.message || 'Gagal menyimpan penilaian ke server.',
             });
@@ -282,21 +367,13 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
         }
     };
 
-    // Di dalam file app/nilai/[outletCode]/page.tsx
-
     const handleFeedbackSubmit = async () => {
-        console.log("--- TOMBOL KIRIM FEEDBACK DIKLIK ---");
-        console.log("Kondisi state 'assessor':", assessor);
-        console.log("Kondisi state 'activePeriod':", activePeriod);
-        // PERBAIKAN VALIDASI
         if (!systemRating || !hrRating) {
             toast.warning("Harap pilih rating untuk sistem dan HR.");
             return;
         }
-        if (!assessor || !activePeriod) {
-            toast.error("Terjadi Kesalahan", {
-                description: "Data penilai atau periode tidak ditemukan. Coba refresh halaman.",
-            });
+        if (!assessorId && !assessorCode) {
+            toast.error("Terjadi Kesalahan", { description: "Data penilai tidak ditemukan." });
             return;
         }
 
@@ -309,13 +386,13 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
                     rating_sistem: systemRating,
                     rating_hr: hrRating,
                     message: feedbackMessage,
-                    assessor_id: assessor.id,
-                    period_id: activePeriod.id
+                    assessor_id: assessorId || assessorCode,
+                    period_id: activePeriod?.id
                 })
             });
 
             if (!response.ok) throw new Error("Gagal menyimpan feedback.");
-            
+
             setHasSubmittedFeedback(true);
             toast.success("Feedback Terkirim!");
         } catch (error: any) {
@@ -324,363 +401,364 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
             setIsSubmittingFeedback(false);
         }
     };
-    
-    // Definisikan data emoji
-    const ratings = [
-        { emoji: '😠', label: 'Sangat Buruk' },
-        { emoji: '😞', label: 'Buruk' },
-        { emoji: '😐', label: 'Biasa Saja' },
-        { emoji: '😊', label: 'Baik' },
-        { emoji: '🤩', label: 'Sangat Baik' }
-    ];
 
-
-    // StarRating component for rating stars (pindah sebelum renderContent untuk menghindari forward-reference issues)
-    const StarRating = ({ aspect_key }: { aspect_key: string }) => {
-        const value = scores[aspect_key] || 0;
-        const handleClick = (rating: number) => {
-            handleRatingChange(aspect_key, rating);
-        };
-        return (
-            <div className="flex gap-1">
-                {[1, 2, 3, 4, 5].map((star) => (
-                    <button
-                        key={star}
-                        type="button"
-                        onClick={() => handleClick(star)}
-                        className="focus:outline-none"
-                        aria-label={`Beri nilai ${star} bintang`}
-                    >
-                        <Star
-                            size={28}
-                            className={star <= value ? "fill-yellow-400 stroke-yellow-500" : "stroke-gray-300"}
-                            fill={star <= value ? "#facc15" : "none"}
-                        />
-                    </button>
-                ))}
-            </div>
-        );
+    const getAspectDescription = (key: string) => {
+        const found = descriptions.find(d => d.aspect_key === key);
+        return found ? found.description_text : "Tidak ada deskripsi.";
     };
 
-    // === RENDER LOGIC ===
+    const allAspectsRated = aspects.length > 0 && Object.keys(scores).length === aspects.length;
+    const isLastAspect = currentAspectIndex === aspects.length - 1;
+
+    // ─── RENDER ───
     const renderContent = () => {
-        if (isLoading && !assessed) return <div className="text-center p-10">Loading...</div>;
+        if (isLoading && !assessed) return <div className="text-center p-10"><Loader2 className="mx-auto animate-spin" /></div>;
         if (error) return <div className="text-center p-10 text-red-500">{error}</div>;
 
         switch (step) {
             case 'welcome':
                 return (
-                    <div className="text-center space-y-4 py-4">
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-4 py-4">
                         <p className="text-gray-600">Survei ini dibuat untuk perkembangan kita bersama!</p>
-                        <Button onClick={handleStart} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
+                        <Button onClick={() => setStep('selectAssessorType')} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white h-12 text-base">
                             Mulai!
                         </Button>
-                    </div>
+                    </motion.div>
                 );
-            
-            case 'description':
+
+            case 'selectAssessorType':
                 return (
-                    <div className="space-y-4 text-left max-h-[60vh] overflow-y-auto p-1 pr-4">
-                        <h3 className="text-center text-lg font-bold text-[#022020]">aa teteh, geulis kasep, crew balistaa di baca dulu yaaah 🫰🏻</h3>
-                        <Separator />
-                        
-                        <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">🧑‍🏫 Aspek Kepemimpinan dan Manajerial itu apa?</h4>
-                            <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                <li>Jadi penengah kalau ada masalah antar crew</li>
-                                <li>Ngingetin & negur kalau ada yang salah</li>
-                                <li>Bangun kerja sama tim biar makin solid</li>
-                                <li>Nyampein info dari manajemen ke tim</li>
-                                <li>Atur jadwal piket kebersihan biar adil dan jalan terus</li>
-                                <li>Bikin tim semangat kerja, kasih motivasi juga</li>
-                                <li>Bantu crew berkembang, kasih arahan biar makin jago</li>
-                                <li>Ciptain suasana kerja yang nyaman</li>
-                                <li>Kasih contoh langsung, bukan cuma nyuruh-nyuruh</li>
-                            </ul>
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 text-center">
+                        <h3 className="font-bold text-[#033F3F]">Siapa yang memberikan penilaian?</h3>
+                        <p className="text-sm text-gray-500">Pilih identitas kamu sebagai penilai.</p>
+                        <div className="grid grid-cols-2 gap-4">
+                            <Button
+                                variant="outline"
+                                className="h-24 flex-col gap-2 border-2 hover:border-[#033F3F] hover:bg-slate-50"
+                                onClick={() => handleSelectType('crew')}
+                            >
+                                <Users size={28} className="text-[#033F3F]" />
+                                <span className="whitespace-normal">Tim Internal Outlet</span>
+                            </Button>
+                            <Button
+                                variant="outline"
+                                className="h-24 flex-col gap-2 border-2 hover:border-[#033F3F] hover:bg-slate-50"
+                                onClick={() => handleSelectType('specialist')}
+                            >
+                                <Briefcase size={28} className="text-[#033F3F]" />
+                                <span className="whitespace-normal">Penilai Spesialis (QC dll)</span>
+                            </Button>
                         </div>
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">🧰 Aspek Persiapan itu apa?</h4>
-                             <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                 <li>Prepare yang ada di Bagian Freezer kaya bahan yang frozen dll.</li>
-                                 <li>Prepare Bagian Dapur kaya alat alat, adonan, dll.</li>
-                             </ul>
-                        </div>
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">🛎️ Aspek Penerimaan Pesanan itu apa?</h4>
-                            <div className="pl-2 space-y-2">
-                                <p className="font-semibold text-sm">👦 Untuk Crew Cowok (Aplikasi Online)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Cek & ambil pesanan dari aplikasi</li>
-                                    <li>Pastikan pesanan cepet disiapin</li>
-                                    <li>Biar driver nggak nunggu lama dan nggak komplain</li>
-                                </ul>
-                                <p className="font-semibold text-sm pt-2">👧 Untuk Crew Cewek (Greet & Great)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Sambut pelanggan dengan senyum</li>
-                                    <li>Bikin kesan pertama yang hangat & ramah</li>
-                                    <li>Catat pesanan dari pelanggan langsung (Orderan Offline)</li>
-                                    <li>Pastikan pesanan nggak salah input</li>
-                                    <li>Layani dengan cepat, jelas, dan ramah</li>
-                                </ul>
-                                <p className="font-semibold text-sm pt-2">✅ Untuk Semua Crew (Bagian Tambahan)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Ikut bantu dapur pas ramai</li>
-                                    <li>Urus admin: absensi, slip gaji, belanja, dll</li>
-                                    <li>Pokoknya yang penting bantu tim, bukan ngilang</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <Separator />
-
-                        <div className="space-y-2">
-                             <h4 className="font-semibold text-base text-[#033F3F]">🍣 Aspek Pembuatan Order itu apa?</h4>
-                            <div className="pl-2 space-y-2">
-                                <p className="font-semibold text-sm">👦 Untuk Crew Cowok (Pembuatan Sushi & Hasil Orderan)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Seberapa jago dia bikin sushi? Rapi nggak? Sesuai SOP?</li>
-                                    <li>Hasil akhirnya gimana? Cakep nggak tampilannya? Pas rasanya? Konsumen puas nggak?</li>
-                                </ul>
-                                <p className="font-semibold text-sm pt-2">👧 Untuk Crew Cewek (Penjelasan & Penawaran)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Bisa jelasin menu ke konsumen nggak? Paham isinya?</li>
-                                    <li>Rajin nggak kasih info promo? Bikin konsumen tertarik atau malah bingung?</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <Separator />
-
-                         <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">📦 Aspek Pengemasan Pesanan itu apa?</h4>
-                            <div className="pl-2 space-y-2">
-                                <p className="font-semibold text-sm">✅ Untuk Semua Crew (Packing-nya gimana?)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Apakah lengkap? Rapi? Ada yang suka ketinggalan nggak?</li>
-                                    <li>Penting banget supaya pesanan sampai ke pelanggan dalam kondisi oke!</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">📊 Aspek Stock Opname itu apa?</h4>
-                             <div className="pl-2 space-y-2">
-                                <p className="font-semibold text-sm">✅ Untuk Semua Crew (Gimana cara dia ngecek & hitung stok?)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Teliti nggak? Ada yang sering kelewat atau salah hitung nggak?</li>
-                                    <li>Soalnya stok yang rapi = kerja lebih lancar dan outlet nggak kehabisan bahan!</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <Separator />
-
-                        <div className="space-y-2">
-                            <h4 className="font-semibold text-base text-[#033F3F]">🧼 Aspek Kebersihan itu apa?</h4>
-                             <div className="pl-2 space-y-2">
-                                <p className="font-semibold text-sm">👕 Kebersihan Diri (Semua Crew)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Penampilan crew itu cerminan outlet.</li>
-                                    <li>Seragam lengkap? Rambut rapi? Atau malah asal-asalan?</li>
-                                </ul>
-                                <p className="font-semibold text-sm pt-2">🧽 Kebersihan Area Konsumen (Crew Cewe)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Area depan harus selalu bersih & nyaman buat pelanggan.</li>
-                                    <li>Lantai, meja, kaca — semuanya harus diperhatikan!</li>
-                                </ul>
-                                 <p className="font-semibold text-sm pt-2">🧼 Kebersihan Area Belakang/Dapur (Crew Cowok)</p>
-                                <ul className="list-disc list-inside text-sm text-gray-700 space-y-1 pl-2">
-                                    <li>Gimana dia jaga kebersihan dapur?</li>
-                                    <li>Termasuk bersihin kulkas, alat masak, tempat cuci piring, jerigen, dan bahan-bahan lainnya.</li>
-                                </ul>
-                            </div>
-                        </div>
-                        <Button onClick={handleStartAssessment} className="w-full mt-6 bg-[#033F3F] hover:bg-[#022020] text-white">
-                            Oke Paham, Lanjut!
-                        </Button>
-                    </div>
+                    </motion.div>
                 );
 
             case 'selectAssessor':
                 return (
-                    <div className="space-y-6">
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                         <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                            <h3 className="font-semibold text-blue-800">Pilih Nama Kamu Dulu ya</h3>
-                            <p className="text-sm text-blue-600">Ini cuma syarat agar kamu tidak menilai diri sendiri.</p>
+                            <h3 className="font-semibold text-blue-800">
+                                {assessorType === 'crew' ? "Pilih Nama Kamu" : "Pilih Akun Spesialis Kamu"}
+                            </h3>
+                            <p className="text-sm text-blue-600">
+                                {assessorType === 'crew'
+                                    ? "Pastikan nama kamu ada di daftar kru outlet ini."
+                                    : "Pilih peran/jabatan penilai spesialis kamu."}
+                            </p>
                         </div>
-                        <Separator />
                         <div>
-                            <label className="font-medium">Nama Kamu *</label>
+                            <label className="font-medium">Identitas Kamu *</label>
                             <Select onValueChange={handleSelectAssessor}>
-                                <SelectTrigger className="w-full mt-2"><SelectValue placeholder="-- Pilih nama kamu --" /></SelectTrigger>
-                                <SelectContent>{allCrew.map((crew) => (<SelectItem key={crew.id} value={crew.id}>{crew.full_name}</SelectItem>))}</SelectContent>
+                                <SelectTrigger className="w-full mt-2"><SelectValue placeholder="-- Pilih identitas kamu --" /></SelectTrigger>
+                                <SelectContent>
+                                    {assessorType === 'crew'
+                                        ? allCrew.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
+                                        : specialists.map(s => <SelectItem key={s.id} value={s.id}>{s.full_name} ({s.code.toUpperCase()})</SelectItem>)
+                                    }
+                                </SelectContent>
                             </Select>
                         </div>
-                    </div>
+                        <Button variant="link" onClick={() => setStep('selectAssessorType')} className="w-full">Kembali</Button>
+                    </motion.div>
                 );
+
             case 'selectAssessed':
-                 return (
-                    <div className="space-y-6">
+                return (
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                         <div className="text-center p-4 bg-green-50 border border-green-200 rounded-lg">
-                            <h3 className="font-semibold text-green-800">Pilih Rekan Kerja</h3>
-                            <p className="text-sm text-green-600">Sisa rekan kerja yang belum dinilai: <strong>{remainingToAssess.length} orang</strong>.</p>
+                            <h3 className="font-semibold text-green-800">Halo, {assessorName}!</h3>
+                            <p className="text-sm text-green-600">Pilih rekan kerja yang ingin kamu nilai. Sisa yang belum dinilai: <strong>{remainingToAssess.length} orang</strong>.</p>
                         </div>
-                        <Separator />
                         <div>
                             <label className="font-medium">Rekan Kerja *</label>
                             <Select onValueChange={handleSelectAssessed} value="">
                                 <SelectTrigger className="w-full mt-2"><SelectValue placeholder="-- Pilih rekan kerja --" /></SelectTrigger>
-                                <SelectContent>{remainingToAssess.map((crew) => (<SelectItem key={crew.id} value={crew.id}>{crew.full_name}</SelectItem>))}</SelectContent>
+                                <SelectContent>{remainingToAssess.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                    </div>
+                    </motion.div>
                 );
+
             case 'rating':
-                if (isLoading) return <div className="text-center p-10">Memuat aspek penilaian...</div>;
+                if (aspects.length === 0) {
+                    return <p className="text-center text-red-500 text-sm py-8">Tidak ada aspek yang dikonfigurasi untuk dinilai oleh Anda pada target ini.</p>;
+                }
+
+                const currentAspect = aspects[currentAspectIndex];
+                const currentScore = scores[currentAspect?.aspect_key] || 0;
+
                 return (
-                    <div className="space-y-6">
-                        <div className="text-center">
-                            <h3 className="text-lg font-semibold">Kamu Menilai: {assessed?.full_name}</h3>
-                            <p className="text-sm text-gray-500">Berikan penilaian dari 1 sampai 5 bintang.</p>
+                    <div className="space-y-4">
+                        {/* Progress */}
+                        <WizardProgress current={currentAspectIndex} total={aspects.length} />
+
+                        {/* Nama yang dinilai */}
+                        <div className="text-center bg-slate-100 p-2 rounded-md">
+                            <span className="text-sm text-gray-500">Menilai</span>
+                            <h3 className="font-bold text-[#033F3F]">{assessed?.full_name}</h3>
                         </div>
-                        <Separator />
-                        <div className="space-y-4 max-h-60 overflow-y-auto pr-2">{aspects.map(aspect => (
-                            <div key={aspect.aspect_key}>
-                                <label className="font-medium text-gray-800">{aspect.aspect_name}</label>
-                                <div className="mt-2"><StarRating aspect_key={aspect.aspect_key} /></div>
+
+                        {/* Carousel Aspect Card */}
+                        <div className="relative overflow-hidden min-h-[360px]">
+                            <AnimatePresence initial={false} custom={direction} mode="wait">
+                                <motion.div
+                                    key={currentAspectIndex}
+                                    custom={direction}
+                                    variants={slideVariants}
+                                    initial="enter"
+                                    animate="center"
+                                    exit="exit"
+                                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                                    className="w-full"
+                                >
+                                    <div className="border rounded-2xl p-5 bg-white shadow-sm">
+                                        {/* Aspect Title */}
+                                        <div className="flex gap-2 mb-3 items-center">
+                                            <BadgeCheck className="text-[#033F3F] flex-shrink-0" size={20} />
+                                            <h4 className="font-bold text-[#033F3F] text-base leading-tight">
+                                                {currentAspect.aspect_name}
+                                            </h4>
+                                        </div>
+
+                                        {/* Description */}
+                                        <div className="text-sm text-gray-600 mb-5 aspect-description-markdown max-h-32 overflow-y-auto">
+                                            <ReactMarkdown>{getAspectDescription(currentAspect.aspect_key)}</ReactMarkdown>
+                                        </div>
+
+                                        {/* Rating Cards Grid */}
+                                        <div className="grid grid-cols-5 gap-2">
+                                            {[1, 2, 3, 4, 5].map(val => (
+                                                <RatingCard
+                                                    key={val}
+                                                    value={val}
+                                                    selected={currentScore === val}
+                                                    onSelect={() => handleRatingChange(currentAspect.aspect_key, val)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            </AnimatePresence>
+                        </div>
+
+                        {/* Navigation */}
+                        <div className="flex items-center justify-between gap-2 pt-2">
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => goToAspect(currentAspectIndex - 1)}
+                                disabled={currentAspectIndex === 0}
+                                className="gap-1"
+                            >
+                                <ChevronLeft size={16} /> Back
+                            </Button>
+
+                            {/* Dot Indicators */}
+                            <div className="flex gap-1 flex-wrap justify-center max-w-[180px]">
+                                {aspects.map((_, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => goToAspect(i)}
+                                        className={`w-2 h-2 rounded-full transition-all ${
+                                            i === currentAspectIndex
+                                                ? 'bg-[#033F3F] scale-125'
+                                                : scores[aspects[i].aspect_key]
+                                                    ? 'bg-emerald-400'
+                                                    : 'bg-gray-300'
+                                        }`}
+                                    />
+                                ))}
                             </div>
-                        ))}</div>
-                        <Button onClick={handleSubmitAssessment} disabled={isSubmitting} className="w-full bg-green-600 hover:bg-green-700">
-                            {isSubmitting ? 'Menyimpan...' : 'Kirim Penilaian'}
+
+                            {isLastAspect ? (
+                                <Button
+                                    size="sm"
+                                    onClick={handleSubmitAssessment}
+                                    disabled={isSubmitting || !allAspectsRated}
+                                    className="gap-1 bg-[#033F3F] hover:bg-[#022020]"
+                                >
+                                    {isSubmitting ? <Loader2 size={16} className="animate-spin" /> : 'Kirim'}
+                                </Button>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => goToAspect(currentAspectIndex + 1)}
+                                    disabled={currentAspectIndex >= aspects.length - 1}
+                                    className="gap-1"
+                                >
+                                    Next <ChevronRight size={16} />
+                                </Button>
+                            )}
+                        </div>
+
+                        <Button variant="ghost" onClick={backToSelectCrew} className="w-full text-sm text-gray-400 hover:text-gray-600">
+                            Batal, pilih crew lain
                         </Button>
-                        <Button variant="link" onClick={backToSelectCrew} className="w-full">Batal</Button>
                     </div>
                 );
 
             case 'success':
+                const ratings = [
+                    { emoji: '😠', label: 'Sangat Buruk' },
+                    { emoji: '😞', label: 'Buruk' },
+                    { emoji: '😐', label: 'Biasa Saja' },
+                    { emoji: '😊', label: 'Baik' },
+                    { emoji: '🤩', label: 'Sangat Baik' }
+                ];
+
                 let videoId = '';
-                    if (tiktokUrl) {
-                        try {
-                            const url = new URL(tiktokUrl);
-                            const pathParts = url.pathname.split('/');
-                            videoId = pathParts[pathParts.length - 1];
-                        } catch (e) {
-                            console.error("Invalid TikTok URL format");
-                        }
-                    }
+                if (tiktokUrl) {
+                    try {
+                        const url = new URL(tiktokUrl);
+                        const pathParts = url.pathname.split('/');
+                        videoId = pathParts[pathParts.length - 1];
+                    } catch (e) {}
+                }
 
-            return (
-                <div className="text-center space-y-4 py-8">
-                    <h2 className="text-2xl font-bold text-green-600">
-                        {/* Baca nama langsung dari objek 'assessor' */}
-                        Beres, Makasih {assessor?.full_name}!
-                    </h2>
-                    <p className="text-gray-600">
-                        {/* Baca nama periode langsung dari objek 'activePeriod' */}
-                        Kamu sudah menilai semua rekan kerjamu di outlet {outletCode?.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
-                    </p>
+                return (
+                    <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="text-center space-y-5 py-6">
+                        {/* Success Animation */}
+                        <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            transition={{ type: 'spring', stiffness: 200, delay: 0.1 }}
+                            className="mx-auto w-20 h-20 rounded-full bg-emerald-100 flex items-center justify-center"
+                        >
+                            <CheckCircle2 className="text-emerald-600" size={48} />
+                        </motion.div>
 
-                    {videoId && (
-                        <div className="mt-6">
-                            <blockquote 
-                                className="tiktok-embed" 
-                                cite={tiktokUrl} 
-                                data-video-id={videoId} 
-                                style={{ maxWidth: '605px', minWidth: '325px' }}
-                            >
-                                <section></section>
-                            </blockquote>
-                        </div>
-                    )}
-                    
-                    <Separator className="my-8" />
+                        <h2 className="text-xl font-bold text-[#033F3F]">
+                            Penilaian untuk {assessed?.full_name} berhasil!
+                        </h2>
 
-                    <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
-                        {hasSubmittedFeedback ? (
-                            <div className="text-center py-10">
-                                <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
-                                <p className="text-gray-600">Terima kasih atas masukanmu.</p>
-                            </div>
-                        ) : (
+                        {/* Quick Action: Continue */}
+                        {remainingToAssess.length > 0 && (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
+                                <Button
+                                    onClick={backToSelectCrew}
+                                    className="w-full bg-[#033F3F] hover:bg-[#022020] h-14 text-base gap-2"
+                                >
+                                    <ArrowRight size={18} />
+                                    Lanjut Nilai Crew Lain ({remainingToAssess.length} sisa)
+                                </Button>
+                            </motion.div>
+                        )}
+
+                        {remainingToAssess.length === 0 && (
                             <>
-                                <h3 className="text-lg font-semibold text-center text-gray-800">Kasih feedback dikit yuk!</h3>
-                                <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Gimana cara & tampilan Penilaian Individu versi upgrade ini?</label>
-                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
-                                            {ratings.map(({ emoji, label }) => (
-                                                <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
-                                                    {emoji}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="font-medium text-gray-700">Gimana performa kerjanya tim HR Balista </label>
-                                        <div className="flex justify-center items-center gap-x-3 sm:gap-x-5">
-                                            {ratings.map(({ emoji, label }) => (
-                                                <button key={label} onClick={() => setHrRating(label)} className={`text-3xl sm:text-4xl transition-transform duration-200 ease-in-out hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
-                                                    {emoji}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
+                                <p className="text-gray-600 text-sm">
+                                    Kamu sudah menyelesaikan semua penilaian di outlet {outletCode?.toUpperCase()} untuk {activePeriod?.name || 'periode ini'}.
+                                </p>
 
-                                    <div className="space-y-2">
-                                        <label htmlFor="feedbackMessage" className="font-medium text-gray-700">
-                                            Sampein pesan atau saran kamu untuk HR disini (Opsional)
-                                        </label>
-                                        <Textarea
-                                            id="feedbackMessage"
-                                            placeholder="Tulis masukanmu di sini..."
-                                            value={feedbackMessage}
-                                            onChange={(e) => setFeedbackMessage(e.target.value)}
-                                        />
+                                {videoId && (
+                                    <div className="mt-4 flex justify-center">
+                                        <blockquote className="tiktok-embed" cite={tiktokUrl} data-video-id={videoId} style={{ maxWidth: '605px', minWidth: '325px' }}>
+                                            <section></section>
+                                        </blockquote>
                                     </div>
-                                    
-                                    <div className="pt-4 text-center">
-                                        <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white">
-                                            {isSubmittingFeedback && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                            Kirim Feedback
-                                        </Button>
-                                        {(!systemRating || !hrRating) && <p className="text-xs text-gray-500 mt-2">Harap pilih rating untuk sistem & HR untuk submit ya!</p>}
+                                )}
+
+                                <Separator className="my-6" />
+
+                                <div className="space-y-6 text-left p-4 bg-slate-50 rounded-lg">
+                                    {hasSubmittedFeedback ? (
+                                        <div className="text-center py-8">
+                                            <h3 className="text-lg font-semibold text-green-700">✔️ Feedback Terkirim!</h3>
+                                            <p className="text-gray-600">Terima kasih atas masukanmu.</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <h3 className="text-lg font-semibold text-center text-gray-800">Kasih feedback dikit yuk!</h3>
+                                            <div className="space-y-2">
+                                                <label className="font-medium text-gray-700 text-sm">Gimana sistem Penilaian versi baru ini?</label>
+                                                <div className="flex justify-center gap-x-3 sm:gap-x-5">
+                                                    {ratings.map(({ emoji, label }) => (
+                                                        <button key={label} onClick={() => setSystemRating(label)} className={`text-3xl transition-transform hover:scale-125 ${systemRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="font-medium text-gray-700 text-sm">Gimana performa kerja tim HR Balista?</label>
+                                                <div className="flex justify-center gap-x-3 sm:gap-x-5">
+                                                    {ratings.map(({ emoji, label }) => (
+                                                        <button key={label} onClick={() => setHrRating(label)} className={`text-3xl transition-transform hover:scale-125 ${hrRating === label ? 'scale-125' : 'opacity-50'}`}>
+                                                            {emoji}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label htmlFor="feedbackMessage" className="font-medium text-gray-700 text-sm">Saran atau pesan buat HR (Opsional)</label>
+                                                <Textarea id="feedbackMessage" value={feedbackMessage} onChange={(e) => setFeedbackMessage(e.target.value)} />
+                                            </div>
+                                            <div className="pt-4 text-center">
+                                                <Button onClick={handleFeedbackSubmit} disabled={!systemRating || !hrRating || isSubmittingFeedback} className="w-full bg-[#033F3F]">
+                                                    {isSubmittingFeedback ? <Loader2 className="animate-spin mr-2" size={16} /> : null} Kirim Feedback
+                                                </Button>
+                                            </div>
+                                        </>
+                                    )}
+                                    <Separator className="my-4" />
+                                    <div className="text-center">
+                                        <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 bg-white border px-4 py-2 rounded-lg text-sm font-semibold hover:bg-gray-50">
+                                            <Mail size={16} /> Kotak Curhat (Klik Sini)
+                                        </a>
                                     </div>
+                                </div>
                             </>
                         )}
-                        <Separator className="my-4" />
-                        <div className="text-center">
-                             <p className="text-sm text-gray-600 mb-3">Oiya kita punya form untuk curhat, saran, atau nyampein apapun soal Balista lewat form ini yaa!</p>
-                             <a href="https://forms.gle/8bC2oNv1K42XA5916" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-x-2 bg-white border border-gray-300 text-gray-700 font-semibold px-4 py-2 rounded-lg shadow-sm hover:bg-gray-50 transition-all duration-200">
-                                 <Mail className="w-5 h-5" />
-                                 Kotak Curhat (Klik Disini)
-                             </a>
-                        </div>
-                    </div>
-                </div>
-            );
+                    </motion.div>
+                );
+
             default:
                 return null;
         }
     };
 
     return (
-        <div className="flex justify-center items-start min-h-screen py-10 bg-gray-100">
-            <Card className="w-full max-w-md shadow-lg">
-                <CardHeader className="text-center space-y-4 pt-6">
-                    <div className="flex justify-center">
+        <div className="flex justify-center items-start min-h-screen py-6 sm:py-10 bg-gray-100 px-4">
+            <Card className="w-full max-w-md shadow-lg border-t-4 border-t-[#033F3F]">
+                <CardHeader className="text-center space-y-2 pt-6">
+                    <div className="flex justify-center mb-2">
                         <Image src="/logo.png" alt="Balista Logo" width={100} height={40} priority />
                     </div>
                     <CardTitle className="text-2xl font-bold text-[#022020]">
-                       Penilaian Individu - {outletCode?.toUpperCase()}<br />
-                       {activePeriod?.name || 'Periode Aktif'}
+                       Penilaian Individu
                     </CardTitle>
+                    <p className="font-medium text-[#033F3F]">{outlet?.name || outletCode?.toUpperCase()} • {activePeriod?.name || 'Periode Aktif'}</p>
                 </CardHeader>
-                <CardContent className="px-6 pb-6">
-                    {message && <div className="mb-4 text-center p-2 bg-green-100 text-green-700 rounded-md">{message}</div>}
+                <CardContent className="px-4 sm:px-6 pb-6">
                     {renderContent()}
                 </CardContent>
             </Card>
         </div>
     );
+}
+
+declare global {
+    interface Window {
+        tiktok?: { load?: () => void };
+    }
 }

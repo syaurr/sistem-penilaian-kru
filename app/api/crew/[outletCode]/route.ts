@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
         // Cari dulu outlet_id berdasarkan outlet_code
         const { data: outletData, error: outletError } = await supabase
             .from('outlets')
-            .select('id')
+            .select('id, name, area_type')
             .eq('outlet_code', outletCode.toUpperCase())
             .single();
 
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
             throw crewError;
         }
 
-        return NextResponse.json(crewData, { headers: { 'Cache-Control': 'no-store' } });
+        return NextResponse.json({ crew: crewData, outlet: outletData }, { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
         console.error('Error fetching crew by outlet:', error);

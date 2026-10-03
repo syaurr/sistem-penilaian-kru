@@ -25,7 +25,7 @@ type SortConfig = { key: keyof Crew | 'outlet_name'; direction: 'asc' | 'desc' }
 const formSchema = z.object({
     full_name: z.string().min(3, { message: "Nama lengkap minimal 3 karakter." }),
     outlet_id: z.string({ required_error: "Harap pilih outlet."}),
-    role: z.enum(["crew", "leader", "supervisor"], { required_error: "Harap pilih role." }),
+    role: z.enum(["crew", "leader"], { required_error: "Harap pilih role." }),
     gender: z.enum(["male", "female"], { required_error: "Harap pilih gender." }),
     is_active: z.boolean(),
 });
@@ -147,7 +147,7 @@ export default function ManageCrewPage() {
                 ? {
                     full_name: crew.full_name,
                     outlet_id: crew.outlets?.id ?? "",
-                    role: crew.role as "crew" | "leader" | "supervisor",
+                    role: crew.role as "crew" | "leader",
                     gender: crew.gender as "male" | "female",
                     is_active: crew.is_active,
                 }
@@ -268,7 +268,7 @@ export default function ManageCrewPage() {
                            <FormField control={form.control} name="full_name" render={({ field }) => ( <FormItem><FormLabel>Nama Lengkap</FormLabel><FormControl><Input placeholder="John Doe" {...field} /></FormControl><FormMessage /></FormItem> )}/>
                            <FormField control={form.control} name="outlet_id" render={({ field }) => ( <FormItem><FormLabel>Outlet</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Pilih outlet" /></SelectTrigger></FormControl><SelectContent>{outlets.map(o => <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>)}</SelectContent></Select><FormMessage /></FormItem> )}/>
                             <div className="grid grid-cols-2 gap-4">
-                                <FormField control={form.control} name="role" render={({ field }) => ( <FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Pilih role" /></SelectTrigger></FormControl><SelectContent><SelectItem value="crew">Crew</SelectItem><SelectItem value="leader">Leader</SelectItem><SelectItem value="supervisor">Supervisor</SelectItem></SelectContent></Select><FormMessage /></FormItem> )}/>
+                                <FormField control={form.control} name="role" render={({ field }) => ( <FormItem><FormLabel>Role</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Pilih role" /></SelectTrigger></FormControl><SelectContent><SelectItem value="crew">Crew</SelectItem><SelectItem value="leader">Leader</SelectItem></SelectContent></Select><FormMessage /></FormItem> )}/>
                                 <FormField control={form.control} name="gender" render={({ field }) => ( <FormItem><FormLabel>Gender</FormLabel><Select onValueChange={field.onChange} defaultValue={field.value}><FormControl><SelectTrigger><SelectValue placeholder="Pilih gender" /></SelectTrigger></FormControl><SelectContent><SelectItem value="male">Laki-laki</SelectItem><SelectItem value="female">Perempuan</SelectItem></SelectContent></Select><FormMessage /></FormItem> )}/>
                             </div>
                             <DialogFooter>

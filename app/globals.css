@@ -77,3 +77,30 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Styling untuk deskripsi aspek yang di-render dari Markdown */
+.aspect-description-markdown ul {
+  list-style-type: disc;
+  margin-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.aspect-description-markdown ol {
+  list-style-type: decimal;
+  margin-left: 1.25rem;
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.aspect-description-markdown li {
+  margin-bottom: 0.15rem;
+}
+
+.aspect-description-markdown p {
+  margin-bottom: 0.5rem;
+}
+
+.aspect-description-markdown strong {
+  font-weight: 600;
+}

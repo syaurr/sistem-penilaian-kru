@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
+import { ASPECT_ORDER } from '@/lib/constants';
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
@@ -28,27 +29,22 @@ export async function GET(request: Request) {
 
         const periodId = targetPeriod.id;
         
-        // --- PERBAIKAN: Tambahkan .limit(10000) agar data tidak terpotong default Supabase ---
-        const [crewResponse, assessmentsResponse, supervisorAssessmentsResponse, weightsResponse, nullPeriodResponse] = await Promise.all([
+        const [crewResponse, assessmentsResponse, weightsResponse, nullPeriodResponse] = await Promise.all([
             supabaseAdmin.from('crew').select('id, full_name, role, gender, outlet_id, outlets(name)').eq('is_active', true),
-            supabaseAdmin.from('assessments').select('assessor_id, assessed_id, scores, period_id').eq('period_id', periodId).limit(10000),
-            supabaseAdmin.from('supervisor_assessments').select('assessed_crew_id, score').eq('period_id', periodId).limit(10000),
+            supabaseAdmin.from('assessments').select('assessor_id, assessed_id, scores, period_id, assessor_code').eq('period_id', periodId).limit(10000),
             supabaseAdmin.from('assessment_weights').select('*').limit(1000),
-            // Cek apakah ada form nyasar (period_id kosong)
             supabaseAdmin.from('assessments').select('id', { count: 'exact', head: true }).is('period_id', null)
         ]);
 
         const { data: allCrew } = crewResponse;
         const { data: allAssessments } = assessmentsResponse;
-        const { data: allSupervisorAssessments } = supervisorAssessmentsResponse;
         const { data: weights } = weightsResponse;
 
-        if (!allCrew || !allAssessments || !allSupervisorAssessments || !weights) throw new Error("Gagal mengambil data lengkap.");
+        if (!allCrew || !allAssessments || !weights) throw new Error("Gagal mengambil data lengkap.");
 
         const assessmentsByCrew = new Map<string, any[]>();
         const submittedAssessmentsByCrew = new Map<string, number>(); 
         
-        // --- PERBAIKAN: Mapping Nama untuk Debugging ---
         const crewNameMap = new Map(allCrew.map(c => [c.id, c.full_name]));
         const rawAssessmentTracking: Record<string, string[]> = {};
 
@@ -60,20 +56,22 @@ export async function GET(request: Request) {
                 submittedAssessmentsByCrew.set(a.assessor_id, (submittedAssessmentsByCrew.get(a.assessor_id) || 0) + 1);
             }
 
-            // Catat log detail "Siapa menilai Siapa" untuk panel UI
-            const assessedName = crewNameMap.get(a.assessed_id) || `ID Tak Dikenal: ${a.assessed_id.substring(0,6)}...`;
-            const assessorName = crewNameMap.get(a.assessor_id) || `ID Tak Dikenal: ${a.assessor_id.substring(0,6)}...`;
+            const assessedName = crewNameMap.get(a.assessed_id) || `ID Tak Dikenal: ${a.assessed_id?.substring(0,6) || ''}...`;
+            
+            let assessorName = "Sistem / Unknown";
+            if (a.assessor_id) {
+                assessorName = crewNameMap.get(a.assessor_id) || `ID Tak Dikenal: ${a.assessor_id.substring(0,6)}...`;
+            } else if (a.assessor_code) {
+                assessorName = `Spesialis (${a.assessor_code})`;
+            }
+
             if (!rawAssessmentTracking[assessedName]) {
                 rawAssessmentTracking[assessedName] = [];
             }
             rawAssessmentTracking[assessedName].push(assessorName);
         });
 
-        const supervisorAssessmentsByCrew = new Map<string, number[]>();
-        allSupervisorAssessments.forEach(sa => {
-            if (!supervisorAssessmentsByCrew.has(sa.assessed_crew_id)) supervisorAssessmentsByCrew.set(sa.assessed_crew_id, []);
-            supervisorAssessmentsByCrew.get(sa.assessed_crew_id)?.push(sa.score);
-        });
+
 
         const weightsMap = new Map(weights.map(w => [`${w.role}-${w.gender}-${w.aspect_key}`, w.max_score]));
         
@@ -90,7 +88,6 @@ export async function GET(request: Request) {
 
         let recapData = allCrew.filter(crew => crew.role !== 'supervisor').map(crew => {
             const crewAssessments = assessmentsByCrew.get(crew.id) || [];
-            const supervisorScores = supervisorAssessmentsByCrew.get(crew.id) || [];
             const aspectScores: { [key: string]: { score: number; max_score: number } } = {};
             const aspectRatings: { [key: string]: number[] } = {};
             
@@ -115,12 +112,11 @@ export async function GET(request: Request) {
                 totalNilaiCrew += weightedScore;
             }
             
-            const nilaiSupervisor1 = supervisorScores[0] || 0;
-            const nilaiSupervisor2 = supervisorScores[1] || 0;
-            let totalSupervisorScore = supervisorScores.length > 0 ? supervisorScores.reduce((a, b) => a + b, 0) / supervisorScores.length : 0;
-            const totalNilaiAkhir = (totalNilaiCrew * 0.6) + (totalSupervisorScore * 0.4);
+            const totalNilaiAkhir = totalNilaiCrew;
             const totalPotentialAssessors = (crewByOutlet[crew.outlet_id] || 1) - 1;
             const actualAssessorsCount = crewAssessments.length;
+            const peerAssessorsCount = crewAssessments.filter(a => a.assessor_code === 'crew' || !a.assessor_code).length;
+            const specialistAssessorsCount = crewAssessments.filter(a => a.assessor_code && a.assessor_code !== 'crew').length;
 
             const targetAssessmentsToSubmit = totalPotentialAssessors;
             const submittedAssessmentsCount = submittedAssessmentsByCrew.get(crew.id) || 0;
@@ -136,8 +132,8 @@ export async function GET(request: Request) {
 
             return {
                 id: crew.id, nama: crew.full_name, outlet: (crew.outlets as any)?.name || 'N/A', role: crew.role,
-                aspectScores, totalNilaiCrew, nilaiSupervisor1, nilaiSupervisor2, totalNilaiAkhir,
-                totalPotentialAssessors, actualAssessorsCount,
+                aspectScores, totalNilaiCrew, totalNilaiAkhir,
+                totalPotentialAssessors, actualAssessorsCount, peerAssessorsCount, specialistAssessorsCount,
                 targetAssessmentsToSubmit, submittedAssessmentsCount, submissionStatus
             };
         });
@@ -145,9 +141,9 @@ export async function GET(request: Request) {
         recapData.sort((a, b) => b.totalNilaiAkhir - a.totalNilaiAkhir);
         const finalRankedData = recapData.map((item, index) => ({ ...item, rank: index + 1 }));
 
+        // Chart data: gunakan 11 aspek dari constants
         const chartData: { [key: string]: any[] } = {};
-        const aspectKeys = ["leadership", "preparation", "cashier", "order_making", "packing", "stock_opname", "cleanliness"];
-        aspectKeys.forEach(key => {
+        ASPECT_ORDER.forEach(key => {
             chartData[key] = finalRankedData
                 .filter(item => item.aspectScores[key] !== undefined)
                 .map(item => ({ name: item.nama.split(' ')[0], score: item.aspectScores[key].score }))
@@ -161,11 +157,10 @@ export async function GET(request: Request) {
             totalCrewActiveFetched: allCrew.length,
             totalCrewEvaluated: recapData.length,
             totalAssessmentsFetched: allAssessments.length,
-            totalSpvAssessmentsFetched: allSupervisorAssessments.length,
             totalWeightsFetched: weights.length,
             missingWeightKeys: Array.from(missingWeightKeys),
-            nullPeriodCount: nullPeriodResponse.count || 0, // Form yang periodenya kosong
-            rawAssessmentTracking // Lacak siapa menilai siapa
+            nullPeriodCount: nullPeriodResponse.count || 0,
+            rawAssessmentTracking
         };
 
         return NextResponse.json({

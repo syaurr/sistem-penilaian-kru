@@ -1,5 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
+import { ASPECT_ORDER, ASPECT_DISPLAY_NAMES } from '@/lib/constants';
+import type { AspectKey } from '@/types';
 
 // Tipe data agar konsisten
 type RecapResult = {
@@ -10,8 +12,6 @@ type RecapResult = {
     role: string;
     totalNilaiAkhir: number;
     totalNilaiCrew: number;
-    nilaiSupervisor1: number;
-    nilaiSupervisor2: number;
     aspect_scores: { 
         [key: string]: { 
             score: number; 
@@ -32,8 +32,6 @@ const getScoreHexColor = (score: number, maxScore: number): {bgColor: string, te
     return CUKUP;
 };
 
-const aspectOrder = ["leadership", "preparation", "cashier", "order_making", "packing", "stock_opname", "cleanliness"];
-
 export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], period: string) => {
     const doc = new jsPDF({ orientation: 'landscape', unit: 'px', format: 'a4' });
     let FONT_NAME = 'helvetica';
@@ -51,7 +49,6 @@ export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], 
         reader.readAsDataURL(logo);
         LOGO_DATA_URI = await new Promise(resolve => { reader.onloadend = () => resolve(reader.result as string) });
 
-        // Helper to convert ArrayBuffer to base64 string
         function arrayBufferToBase64(buffer: ArrayBuffer) {
             let binary = '';
             const bytes = new Uint8Array(buffer);
@@ -73,36 +70,44 @@ export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], 
     
     if (LOGO_DATA_URI) doc.addImage(LOGO_DATA_URI, 'PNG', 40, 25, 60, 0); 
     doc.setFont(FONT_NAME, 'bold');
-    doc.setFontSize(22);
+    doc.setFontSize(18);
     doc.setTextColor(DARK_TEAL);
     doc.text("HASIL MONITORING PENILAIAN INDIVIDU", doc.internal.pageSize.getWidth() / 2, 40, { align: 'center' });
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont(FONT_NAME, 'normal');
     doc.text(`PERIODE: ${period.toUpperCase()}`, doc.internal.pageSize.getWidth() / 2, 55, { align: 'center' });
 
-    const tableColumn = [ "Peringkat", "Nama Kru - Outlet", "Kepemimpinan", "Persiapan", "Penerimaan", "Pembuatan", "Pengemasan", "SO", "Kebersihan" ];
-    const tableRows = data.slice(0, 25).map(item => (['', '', '', '', '', '', '', '', '']));
+    // Header tabel dinamis berdasarkan 11 aspek
+    const tableColumn = [
+        "Rank",
+        "Nama Kru - Outlet",
+        ...ASPECT_ORDER.map(key => ASPECT_DISPLAY_NAMES[key]),
+    ];
+    
+    // Baris kosong (diisi lewat didDrawCell)
+    const tableRows = data.slice(0, 25).map(() => 
+        Array(tableColumn.length).fill('')
+    );
+
+    // Kolom lebar — disesuaikan untuk 11 aspek di landscape A4 (~632px)
+    const columnStyles: Record<number, any> = {
+        0: { cellWidth: 32, halign: 'center' },  // Rank
+        1: { cellWidth: 70, halign: 'left' },     // Nama Kru
+    };
+    
+    // Setiap kolom aspek mendapat lebar sama (~48px untuk 11 aspek)
+    ASPECT_ORDER.forEach((_, idx) => {
+        columnStyles[idx + 2] = { cellWidth: 48 };
+    });
 
     autoTable(doc, {
         head: [tableColumn],
         body: tableRows,
         startY: 80,
         theme: 'plain', 
-        styles: { font: FONT_NAME, fontSize: 9, cellPadding: { top: 8, right: 3, bottom: 8, left: 3 }, valign: 'middle' },
-        headStyles: { textColor: '#FFFFFF', font: FONT_NAME, fontStyle: 'bold', fontSize: 9, cellPadding: { top: 5, right: 2, bottom: 5, left: 2 } },
-        
-        // --- PERUBAHAN UTAMA DI SINI ---
-        columnStyles: { 
-            0: { cellWidth: 50, halign: 'center' },  // Peringkat
-            1: { cellWidth: 90, halign: 'left' },   // Nama Kru
-            2: { cellWidth: 65 },  // Kepemimpinan
-            3: { cellWidth: 65 },  // Persiapan
-            4: { cellWidth: 65 },  // Penerimaan
-            5: { cellWidth: 65 },  // Pembuatan
-            6: { cellWidth: 65 },  // Pengemasan
-            7: { cellWidth: 45 },  // SO
-            8: { cellWidth: 65 },  // Kebersihan
-        },
+        styles: { font: FONT_NAME, fontSize: 7, cellPadding: { top: 6, right: 2, bottom: 6, left: 2 }, valign: 'middle' },
+        headStyles: { textColor: '#FFFFFF', font: FONT_NAME, fontStyle: 'bold', fontSize: 7, cellPadding: { top: 4, right: 2, bottom: 4, left: 2 } },
+        columnStyles,
         
         didDrawCell: (hookData) => {
             const { cell, row, column, doc } = hookData;
@@ -116,7 +121,7 @@ export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], 
 
             if (row.section === 'head') {
                 doc.setFillColor(DARK_TEAL);
-                doc.roundedRect(cellX, cellY, cellW, cellH, 8, 8, 'F');
+                doc.roundedRect(cellX, cellY, cellW, cellH, 6, 6, 'F');
                 doc.setTextColor('#FFFFFF');
                 doc.setFont(FONT_NAME, 'bold');
                 doc.text(String(cell.text), cellX + cellW / 2, cellY + cellH / 2, { align: 'center', baseline: 'middle' });
@@ -130,26 +135,27 @@ export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], 
 
                 doc.setFillColor(rankColor);
                 const x = cellX + cellW / 2;
-                doc.roundedRect(x - 12, cellY + 4, 24, cellH - 8, 8, 8, 'F');
+                doc.roundedRect(x - 10, cellY + 3, 20, cellH - 6, 6, 6, 'F');
                 doc.setTextColor(textColor);
                 doc.setFont(FONT_NAME, 'bold');
-                doc.setFontSize(12);
+                doc.setFontSize(10);
                 doc.text(String(crewData.rank), x, cellY + cellH / 2, { align: 'center', baseline: 'middle' });
             }
 
             if (row.section === 'body' && column.index === 1) {
                 doc.setFont(FONT_NAME, 'bold');
-                doc.setFontSize(10);
-                doc.setTextColor(DARK_TEAL);
-                doc.text(crewData.name, cellX + 4, cellY + cellH / 2 - 4, { baseline: 'middle' });
-                doc.setFont(FONT_NAME, 'normal');
                 doc.setFontSize(8);
+                doc.setTextColor(DARK_TEAL);
+                doc.text(crewData.name, cellX + 3, cellY + cellH / 2 - 3, { baseline: 'middle' });
+                doc.setFont(FONT_NAME, 'normal');
+                doc.setFontSize(6);
                 doc.setTextColor('#6b7280');
-                doc.text(crewData.outlet, cellX + 4, cellY + cellH / 2 + 7, { baseline: 'middle' });
+                doc.text(crewData.outlet, cellX + 3, cellY + cellH / 2 + 6, { baseline: 'middle' });
             }
 
             if (row.section === 'body' && column.index >= 2) {
-                const aspectKey = aspectOrder[column.index - 2];
+                const aspectIdx = column.index - 2;
+                const aspectKey = ASPECT_ORDER[aspectIdx];
                 if (!aspectKey) return;
                 const aspectData = crewData.aspect_scores[aspectKey];
                 const text = (crewData.role === 'leader' || aspectKey !== 'leadership') ? aspectData?.score?.toFixed(1) : undefined;
@@ -158,12 +164,12 @@ export const exportToPdf = async (data: RecapResult[], aspects: AspectHeader[], 
                     const colors = getScoreHexColor(aspectData.score, aspectData.max_score);
                     if (colors) {
                         doc.setFont(FONT_NAME, 'bold');
-                        doc.setFontSize(10);
+                        doc.setFontSize(8);
                         const textWidth = doc.getTextWidth(text);
-                        const pillWidth = textWidth + 16;
+                        const pillWidth = textWidth + 12;
                         const pillX = cellX + (cellW - pillWidth) / 2;
                         doc.setFillColor(colors.bgColor);
-                        doc.roundedRect(pillX, cellY + 5, pillWidth, cellH - 10, 8, 8, 'F');
+                        doc.roundedRect(pillX, cellY + 4, pillWidth, cellH - 8, 6, 6, 'F');
                         doc.setTextColor(colors.textColor);
                         doc.text(text, cellX + cellW / 2, cellY + cellH / 2, { align: 'center', baseline: 'middle' });
                     }

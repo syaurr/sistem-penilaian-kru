@@ -18,6 +18,8 @@ import {
     MessageSquareQuote,
     Settings,
     LogOut,
+    Grid3X3,
+    FileText,
 } from "lucide-react";
 
 type NavLink = {
@@ -32,6 +34,8 @@ const navLinks: NavLink[] = [
     { href: "/admin/outlets", label: "Outlet", icon: Building },
     { href: "/admin/periods", label: "Periode", icon: CalendarClock },
     { href: "/admin/weights", label: "Bobot", icon: Calculator },
+    { href: "/admin/mapping", label: "Pemetaan Asesor", icon: Grid3X3 },
+    { href: "/admin/descriptions", label: "Deskripsi Aspek", icon: FileText },
     { href: "/admin/feedback", label: "Rekap Feedback", icon: MessageSquareQuote },
     { href: "/admin/settings", label: "Pengaturan", icon: Settings },
 ];

@@ -5,18 +5,21 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { toast } from "sonner";
+import { AREA_TYPE_DISPLAY_NAMES } from '@/lib/constants';
 
-type Outlet = { id: string; name: string; outlet_code: string; };
+type Outlet = { id: string; name: string; outlet_code: string; area_type: 'dine_in' | 'express'; };
 
 const formSchema = z.object({
     name: z.string().min(3, { message: "Nama outlet minimal 3 karakter" }),
     outlet_code: z.string().min(2, { message: "Kode outlet minimal 2 karakter" }).max(10).transform(val => val.toUpperCase()),
+    area_type: z.enum(['dine_in', 'express'], { required_error: "Harap pilih tipe area." }),
 });
 
 export default function ManageOutletsPage() {
@@ -42,7 +45,7 @@ export default function ManageOutletsPage() {
 
     const handleOpenDialog = (outlet: Outlet | null = null) => {
         setEditingOutlet(outlet);
-        form.reset(outlet || { name: '', outlet_code: '' });
+        form.reset(outlet || { name: '', outlet_code: '', area_type: 'dine_in' });
         setIsDialogOpen(true);
     };
 
@@ -119,6 +122,23 @@ export default function ManageOutletsPage() {
                                     <FormMessage />
                                 </FormItem>
                             )}/>
+                            <FormField control={form.control} name="area_type" render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Tipe Area</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Pilih tipe area" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="dine_in">Dine-in</SelectItem>
+                                            <SelectItem value="express">Express</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}/>
                             <DialogFooter>
                                 <DialogClose asChild><Button type="button" variant="secondary">Batal</Button></DialogClose>
                                 <Button type="submit">Simpan</Button>
@@ -133,6 +153,7 @@ export default function ManageOutletsPage() {
                     <TableRow>
                         <TableHead>Nama Outlet</TableHead>
                         <TableHead>Kode</TableHead>
+                        <TableHead>Tipe Area</TableHead>
                         <TableHead>Aksi</TableHead>
                     </TableRow>
                 </TableHeader>
@@ -141,6 +162,11 @@ export default function ManageOutletsPage() {
                         <TableRow key={outlet.id}>
                             <TableCell className="font-medium">{outlet.name}</TableCell>
                             <TableCell>{outlet.outlet_code}</TableCell>
+                            <TableCell>
+                                <span className={`inline-block px-2 py-0.5 rounded text-xs font-semibold ${outlet.area_type === 'express' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                                    {AREA_TYPE_DISPLAY_NAMES[outlet.area_type] || outlet.area_type}
+                                </span>
+                            </TableCell>
                             <TableCell className="space-x-2">
                                 <Button variant="outline" size="sm" onClick={() => handleOpenDialog(outlet)}>Edit</Button>
                                 <AlertDialog>

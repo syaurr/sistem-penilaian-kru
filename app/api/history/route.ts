@@ -4,6 +4,7 @@ export const revalidate = 0;
 export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const assessor_id = searchParams.get('assessor_id');
+    const assessor_code = searchParams.get('assessor_code');
 
     if (!assessor_id) {
         return NextResponse.json({ message: 'Assessor ID is required' }, { status: 400,
@@ -23,11 +24,20 @@ export async function GET(request: Request) {
             return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
         }
 
-        const { data, error } = await supabaseAdmin
+        // Untuk penilai spesialis (assessor_code ada dan bukan 'crew'),
+        // query by assessor_code karena assessor_id mereka null di tabel assessments
+        let query = supabaseAdmin
             .from('assessments')
             .select('assessed_id')
-            .eq('assessor_id', assessor_id)
             .eq('period_id', activePeriod.id);
+
+        if (assessor_code && assessor_code !== 'crew') {
+            query = query.eq('assessor_code', assessor_code);
+        } else {
+            query = query.eq('assessor_id', assessor_id);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
             throw error;

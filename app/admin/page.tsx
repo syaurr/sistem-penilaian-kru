@@ -7,40 +7,8 @@ import { Progress } from "@/components/ui/progress";
 import { AspectChart } from '@/components/charts/AspectChart';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { AlertCircle, AlertTriangle, CheckCircle2 } from 'lucide-react';
-
-// Tipe data yang sudah diperbarui dengan field status penilaian
-type RecapData = {
-    id: string; 
-    nama: string; 
-    outlet: string; 
-    role: string;
-    aspectScores: { [key: string]: { score: number; max_score: number; } };
-    totalNilaiCrew: number; 
-    nilaiSupervisor1: number; 
-    nilaiSupervisor2: number;
-    totalNilaiAkhir: number; 
-    rank: number; 
-    bonusStatus: string;
-    totalPotentialAssessors: number; 
-    actualAssessorsCount: number;
-    targetAssessmentsToSubmit: number; 
-    submittedAssessmentsCount: number;
-    submissionStatus: 'none' | 'partial' | 'completed';
-};
-
-const aspectDisplayNames: { [key: string]: string } = { 
-    leadership: "Kepemimpinan", preparation: "Persiapan", cashier: "Penerimaan", 
-    order_making: "Pembuatan", packing: "Pengemasan", stock_opname: "Stock Opname", cleanliness: "Kebersihan" 
-};
-const aspectOrder = ["leadership", "preparation", "cashier", "order_making", "packing", "stock_opname", "cleanliness"];
-
-const getScoreColorClass = (aspectData?: { score: number; max_score: number }): string => {
-    if (!aspectData || aspectData.max_score === 0) return 'bg-gray-100';
-    const percentage = (aspectData.score / aspectData.max_score) * 100;
-    if (percentage >= 75) return 'bg-teal-100 text-teal-800';
-    if (percentage >= 50) return 'bg-green-100 text-green-800';
-    return 'bg-yellow-100 text-yellow-800';
-};
+import { ASPECT_ORDER, ASPECT_DISPLAY_NAMES, getScoreColorClass } from '@/lib/constants';
+import type { RecapData, AspectKey } from '@/types';
 
 export default function AdminDashboard() {
     const [recapData, setRecapData] = useState<RecapData[]>([]);
@@ -124,24 +92,22 @@ export default function AdminDashboard() {
                             <Table>
                                 <TableHeader className="bg-gray-50">
                                     <TableRow>
-                                        <TableHead className="w-[60px] text-center font-bold">Rank</TableHead>
-                                        <TableHead className="min-w-[200px] font-bold">Nama Kru & Status Penilaian</TableHead>
-                                        {aspectOrder.map(key => (
-                                            <TableHead key={key} className="text-center font-bold">
-                                                {aspectDisplayNames[key]}
+                                        <TableHead className="w-[60px] text-center font-bold sticky left-0 bg-gray-50 z-10">Rank</TableHead>
+                                        <TableHead className="min-w-[200px] font-bold sticky left-[60px] bg-gray-50 z-10">Nama Kru & Status</TableHead>
+                                        {ASPECT_ORDER.map(key => (
+                                            <TableHead key={key} className="text-center font-bold text-xs whitespace-nowrap">
+                                                {ASPECT_DISPLAY_NAMES[key]}
                                             </TableHead>
                                         ))}
                                         <TableHead className="text-center font-bold">Total Kru</TableHead>
-                                        <TableHead className="text-center font-bold">Spv 1</TableHead>
-                                        <TableHead className="text-center font-bold">Spv 2</TableHead>
                                         <TableHead className="text-center font-extrabold text-lg text-primary">Nilai Akhir</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {recapData.map((recap) => (
                                         <TableRow key={recap.id} className="hover:bg-slate-50 transition-colors">
-                                            <TableCell className="font-bold text-center text-lg">{recap.rank}</TableCell>
-                                            <TableCell>
+                                            <TableCell className="font-bold text-center text-lg sticky left-0 bg-white z-10">{recap.rank}</TableCell>
+                                            <TableCell className="sticky left-[60px] bg-white z-10">
                                                 <div className="font-bold text-base">{recap.nama}</div>
                                                 <div className="text-xs text-muted-foreground mb-2">{recap.outlet} <span className="capitalize">({recap.role})</span></div>
                                                 
@@ -167,36 +133,45 @@ export default function AdminDashboard() {
                                                     )}
                                                 </div>
 
-                                                {/* PROGRESS BAR (Penilaian Diterima dari orang lain) */}
-                                                {recap.totalPotentialAssessors > 0 && (
-                                                    <div className="mt-2 w-32 border-t pt-1">
-                                                        <div className="flex justify-between text-[10px] text-muted-foreground mb-1">
-                                                            <span>Dinilai oleh:</span>
-                                                            <span className="font-medium">{recap.actualAssessorsCount} / {recap.totalPotentialAssessors}</span>
+                                                {/* DETAIL PENILAI YANG MASUK */}
+                                                <div className="mt-2 border-t pt-2 w-48">
+                                                    <div className="text-[10px] font-bold text-gray-600 mb-1">Diterima dari:</div>
+                                                    
+                                                    {/* Peer Progress */}
+                                                    {recap.totalPotentialAssessors > 0 && (
+                                                        <div className="mb-1.5">
+                                                            <div className="flex justify-between text-[10px] text-muted-foreground mb-0.5">
+                                                                <span>Kru (Peer)</span>
+                                                                <span className="font-medium">{recap.peerAssessorsCount} / {recap.totalPotentialAssessors}</span>
+                                                            </div>
+                                                            <Progress value={Math.min((recap.peerAssessorsCount / recap.totalPotentialAssessors) * 100, 100)} className="h-1" />
                                                         </div>
-                                                        <Progress value={(recap.actualAssessorsCount / recap.totalPotentialAssessors) * 100} className="h-1.5" />
+                                                    )}
+
+                                                    {/* Specialist Count */}
+                                                    <div className="flex justify-between text-[10px] text-muted-foreground">
+                                                        <span>Spesialis / QC</span>
+                                                        <span className="font-medium">{recap.specialistAssessorsCount} Form</span>
                                                     </div>
-                                                )}
+                                                </div>
                                             </TableCell>
-                                            {aspectOrder.map(key => (
+                                            {ASPECT_ORDER.map(key => (
                                                 <TableCell key={key} className="text-center">
                                                     {recap.role === 'crew' && key === 'leadership' ? '-' : (
-                                                        <span className={`inline-block px-2 py-1 rounded font-semibold text-sm ${getScoreColorClass(recap.aspectScores[key])}`}>
+                                                        <span className={`inline-block px-2 py-1 rounded font-semibold text-xs ${getScoreColorClass(recap.aspectScores[key])}`}>
                                                             {recap.aspectScores[key]?.score?.toFixed(1) || '-'}
                                                         </span>
                                                     )}
                                                 </TableCell>
                                             ))}
                                             <TableCell className="text-center font-bold">{recap.totalNilaiCrew.toFixed(2)}</TableCell>
-                                            <TableCell className="text-center font-medium">{recap.nilaiSupervisor1 > 0 ? recap.nilaiSupervisor1 : '-'}</TableCell>
-                                            <TableCell className="text-center font-medium">{recap.nilaiSupervisor2 > 0 ? recap.nilaiSupervisor2 : '-'}</TableCell>
                                             <TableCell className="text-center font-black text-lg text-primary">{recap.totalNilaiAkhir.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
                                     
                                     {recapData.length === 0 && (
                                         <TableRow>
-                                            <TableCell colSpan={13} className="text-center py-8 text-gray-500">
+                                            <TableCell colSpan={ASPECT_ORDER.length + 3} className="text-center py-8 text-gray-500">
                                                 Tidak ada data evaluasi kru yang ditemukan untuk periode ini.
                                             </TableCell>
                                         </TableRow>
@@ -205,7 +180,7 @@ export default function AdminDashboard() {
                                 
                                 <TableFooter className="bg-gray-50 border-t-2">
                                     <TableRow>
-                                        <TableCell colSpan={12} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
+                                        <TableCell colSpan={ASPECT_ORDER.length + 2} className="text-right font-bold text-lg">Rata-rata Nilai Akhir Semua Kru</TableCell>
                                         <TableCell className="text-center font-black text-xl text-primary">{averageFinalScore.toFixed(2)}</TableCell>
                                     </TableRow>
                                 </TableFooter>
@@ -220,11 +195,11 @@ export default function AdminDashboard() {
                         Top 3 Performa Aspek Terbaik
                     </AccordionTrigger>
                     <AccordionContent className="px-6 pb-6 pt-2">
-                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-                            {chartData && Object.keys(chartData).length > 0 && aspectOrder.map(key => (
+                        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                            {chartData && Object.keys(chartData).length > 0 && ASPECT_ORDER.map(key => (
                                 <div key={key} className="border rounded-lg p-1 bg-slate-50/50">
                                     <AspectChart 
-                                        title={aspectDisplayNames[key]} 
+                                        title={ASPECT_DISPLAY_NAMES[key]} 
                                         data={chartData[key]}
                                     />
                                 </div>
@@ -299,7 +274,7 @@ export default function AdminDashboard() {
                                     </div>
                                 </div>
 
-                                {/* WARNING: BOBOT (Sudah ada dari kode sebelumnya) */}
+                                {/* WARNING: BOBOT */}
                                 {debugInfo.missingWeightKeys && debugInfo.missingWeightKeys.length > 0 && (
                                     <div className="bg-orange-50 text-orange-900 p-4 rounded border border-orange-300">
                                         <h4 className="font-bold mb-2 text-orange-700 flex items-center gap-2">
