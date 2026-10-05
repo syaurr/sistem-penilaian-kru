@@ -20,8 +20,7 @@ type Assessor = { id: string; full_name: string; code: string; };
 type Aspect = { aspect_key: string; aspect_name: string; };
 type AspectDesc = { id: number; aspect_key: string; area_type: string; target_role: string; description_text: string; };
 
-type AssessorType = 'crew' | 'specialist';
-type Step = 'welcome' | 'selectAssessorType' | 'selectAssessor' | 'selectAssessed' | 'rating' | 'success';
+type Step = 'welcome' | 'selectAssessor' | 'selectAssessed' | 'rating' | 'success';
 
 // ─── Framer Motion Variants ───
 const slideVariants = {
@@ -90,13 +89,9 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
     // Data states
     const [outlet, setOutlet] = useState<Outlet | null>(null);
     const [allCrew, setAllCrew] = useState<CrewMember[]>([]);
-    const [specialists, setSpecialists] = useState<Assessor[]>([]);
     const [descriptions, setDescriptions] = useState<AspectDesc[]>([]);
     const [activePeriod, setActivePeriod] = useState<{ id: string, name: string } | null>(null);
     const [tiktokUrl, setTiktokUrl] = useState('');
-
-    // Selection states
-    const [assessorType, setAssessorType] = useState<AssessorType | null>(null);
 
     // Assessor Info
     const [assessorId, setAssessorId] = useState<string>('');
@@ -124,11 +119,10 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
             setIsLoading(true);
             setError('');
             try {
-                const [crewRes, periodRes, tiktokRes, specialistsRes] = await Promise.all([
+                const [crewRes, periodRes, tiktokRes] = await Promise.all([
                     fetch(`/api/crew/${outletCode}`),
                     fetch('/api/active-period'),
-                    fetch('/api/setting?key=tiktok_success_url'),
-                    fetch('/api/assessors')
+                    fetch('/api/setting?key=tiktok_success_url')
                 ]);
 
                 if (!crewRes.ok) throw new Error("Gagal memuat data outlet/kru.");
@@ -145,11 +139,6 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
                 if (tiktokRes.ok) {
                     const tData = await tiktokRes.json();
                     if (tData && tData.value) setTiktokUrl(tData.value);
-                }
-
-                if (specialistsRes.ok) {
-                    const sData = await specialistsRes.json();
-                    setSpecialists(sData);
                 }
 
                 if (crewData.outlet) {
@@ -203,61 +192,29 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
     }, [step]);
 
     // ─── Handlers ───
-    const handleSelectType = (type: AssessorType) => {
-        setAssessorType(type);
-        if (type === 'crew') setAssessorCode('crew');
-        setStep('selectAssessor');
-    };
-
     const handleSelectAssessor = async (value: string) => {
-        if (assessorType === 'crew') {
-            const selected = allCrew.find(c => c.id === value);
-            if (selected) {
-                setAssessorId(selected.id);
-                setAssessorName(selected.full_name);
-                setAssessorCode('crew');
-                const remaining = allCrew.filter(c => c.id !== selected.id);
+        const selected = allCrew.find(c => c.id === value);
+        if (selected) {
+            setAssessorId(selected.id);
+            setAssessorName(selected.full_name);
+            setAssessorCode('crew');
+            const remaining = allCrew.filter(c => c.id !== selected.id);
 
-                if (activePeriod) {
-                    try {
-                        const historyRes = await fetch(`/api/history?assessor_id=${selected.id}&period_id=${activePeriod.id}`);
-                        if (historyRes.ok) {
-                            const historyData = await historyRes.json();
-                            const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
-                            setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
-                        } else {
-                            setRemainingToAssess(remaining);
-                        }
-                    } catch { setRemainingToAssess(remaining); }
-                } else {
-                    setRemainingToAssess(remaining);
-                }
-                setStep('selectAssessed');
+            if (activePeriod) {
+                try {
+                    const historyRes = await fetch(`/api/history?assessor_id=${selected.id}&period_id=${activePeriod.id}`);
+                    if (historyRes.ok) {
+                        const historyData = await historyRes.json();
+                        const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
+                        setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
+                    } else {
+                        setRemainingToAssess(remaining);
+                    }
+                } catch { setRemainingToAssess(remaining); }
+            } else {
+                setRemainingToAssess(remaining);
             }
-        } else {
-            const selected = specialists.find(s => s.id === value);
-            if (selected) {
-                setAssessorId('');
-                setAssessorName(selected.full_name);
-                setAssessorCode(selected.code);
-                const remaining = [...allCrew];
-
-                if (activePeriod) {
-                    try {
-                        const historyRes = await fetch(`/api/history?assessor_code=${selected.code}&period_id=${activePeriod.id}`);
-                        if (historyRes.ok) {
-                            const historyData = await historyRes.json();
-                            const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
-                            setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
-                        } else {
-                            setRemainingToAssess(remaining);
-                        }
-                    } catch { setRemainingToAssess(remaining); }
-                } else {
-                    setRemainingToAssess(remaining);
-                }
-                setStep('selectAssessed');
-            }
+            setStep('selectAssessed');
         }
     };
 
@@ -429,35 +386,9 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
                 return (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="text-center space-y-4 py-4">
                         <p className="text-gray-600">Survei ini dibuat untuk perkembangan kita bersama!</p>
-                        <Button onClick={() => setStep('selectAssessorType')} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white h-12 text-base">
+                        <Button onClick={() => setStep('selectAssessor')} className="w-full bg-[#033F3F] hover:bg-[#022020] text-white h-12 text-base">
                             Mulai!
                         </Button>
-                    </motion.div>
-                );
-
-            case 'selectAssessorType':
-                return (
-                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6 text-center">
-                        <h3 className="font-bold text-[#033F3F]">Siapa yang memberikan penilaian?</h3>
-                        <p className="text-sm text-gray-500">Pilih identitas kamu sebagai penilai.</p>
-                        <div className="grid grid-cols-2 gap-4">
-                            <Button
-                                variant="outline"
-                                className="h-24 flex-col gap-2 border-2 hover:border-[#033F3F] hover:bg-slate-50"
-                                onClick={() => handleSelectType('crew')}
-                            >
-                                <Users size={28} className="text-[#033F3F]" />
-                                <span className="whitespace-normal">Tim Internal Outlet</span>
-                            </Button>
-                            <Button
-                                variant="outline"
-                                className="h-24 flex-col gap-2 border-2 hover:border-[#033F3F] hover:bg-slate-50"
-                                onClick={() => handleSelectType('specialist')}
-                            >
-                                <Briefcase size={28} className="text-[#033F3F]" />
-                                <span className="whitespace-normal">Penilai Spesialis (QC dll)</span>
-                            </Button>
-                        </div>
                     </motion.div>
                 );
 
@@ -466,12 +397,10 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
                         <div className="text-center p-4 bg-blue-50 border border-blue-200 rounded-lg">
                             <h3 className="font-semibold text-blue-800">
-                                {assessorType === 'crew' ? "Pilih Nama Kamu" : "Pilih Akun Spesialis Kamu"}
+                                Pilih Nama Kamu
                             </h3>
                             <p className="text-sm text-blue-600">
-                                {assessorType === 'crew'
-                                    ? "Pastikan nama kamu ada di daftar kru outlet ini."
-                                    : "Pilih peran/jabatan penilai spesialis kamu."}
+                                Pastikan nama kamu ada di daftar kru outlet ini.
                             </p>
                         </div>
                         <div>
@@ -479,14 +408,11 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
                             <Select onValueChange={handleSelectAssessor}>
                                 <SelectTrigger className="w-full mt-2"><SelectValue placeholder="-- Pilih identitas kamu --" /></SelectTrigger>
                                 <SelectContent>
-                                    {assessorType === 'crew'
-                                        ? allCrew.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)
-                                        : specialists.map(s => <SelectItem key={s.id} value={s.id}>{s.full_name} ({s.code.toUpperCase()})</SelectItem>)
-                                    }
+                                    {allCrew.map(c => <SelectItem key={c.id} value={c.id}>{c.full_name}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
-                        <Button variant="link" onClick={() => setStep('selectAssessorType')} className="w-full">Kembali</Button>
+                        <Button variant="link" onClick={() => setStep('welcome')} className="w-full">Kembali</Button>
                     </motion.div>
                 );
 
