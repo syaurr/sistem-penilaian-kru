@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { ASPECT_ORDER, ASPECT_FULL_NAMES, ASPECT_EMOJIS, AREA_TYPE_DISPLAY_NAMES } from '@/lib/constants';
 import type { AspectKey, AspectDescription } from '@/types';
@@ -32,33 +33,33 @@ export default function DescriptionsPage() {
 
     useEffect(() => { fetchData(); }, []);
 
-    const getDescription = (aspectKey: AspectKey, areaType: string): string => {
+    const getDescription = (aspectKey: AspectKey, areaType: string, targetRole: string): string => {
         const desc = descriptions.find(
-            d => d.aspect_key === aspectKey && d.area_type === areaType
+            d => d.aspect_key === aspectKey && d.area_type === areaType && d.target_role === targetRole
         );
         return desc?.description_text || '';
     };
 
-    const handleTextChange = (aspectKey: AspectKey, areaType: string, newText: string) => {
+    const handleTextChange = (aspectKey: AspectKey, areaType: string, targetRole: string, newText: string) => {
         setDescriptions(prev => prev.map(d => {
-            if (d.aspect_key === aspectKey && d.area_type === areaType) {
+            if (d.aspect_key === aspectKey && d.area_type === areaType && d.target_role === targetRole) {
                 return { ...d, description_text: newText };
             }
             return d;
         }));
     };
 
-    const handleSave = async () => {
+    const handleSave = async (areaType: string) => {
         setIsSaving(true);
         try {
+            const toSave = descriptions
+                .filter(d => d.aspect_key === selectedAspect && d.area_type === areaType)
+                .map(({ id, description_text }) => ({ id, description_text }));
+
             const res = await fetch('/api/admin/descriptions', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(
-                    descriptions
-                        .filter(d => d.aspect_key === selectedAspect)
-                        .map(({ id, description_text }) => ({ id, description_text }))
-                ),
+                body: JSON.stringify(toSave),
             });
             if (!res.ok) {
                 const errorData = await res.json();
@@ -76,26 +77,18 @@ export default function DescriptionsPage() {
 
     return (
         <div className="space-y-4">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-2xl font-bold">Deskripsi Aspek Penilaian</h1>
-                    <p className="text-sm text-muted-foreground">
-                        Kelola deskripsi (Final Question) per aspek untuk masing-masing tipe area outlet (Dine-in / Express).
-                    </p>
-                </div>
-                <Button onClick={handleSave} disabled={isSaving}>
-                    {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
-                </Button>
+            <div>
+                <h1 className="text-2xl font-bold">Deskripsi Aspek Penilaian</h1>
+                <p className="text-sm text-muted-foreground">
+                    Kelola deskripsi per aspek, dipisah antara <strong>Leader</strong> dan <strong>Crew</strong>, serta per tipe area (Dine-in / Express).
+                </p>
             </div>
 
             <Card>
                 <CardHeader>
-                    <CardTitle className="flex items-center gap-3">
+                    <CardTitle className="flex items-center gap-3 flex-wrap">
                         <span>Pilih Aspek:</span>
-                        <Select
-                            value={selectedAspect}
-                            onValueChange={(val) => setSelectedAspect(val as AspectKey)}
-                        >
+                        <Select value={selectedAspect} onValueChange={(val) => setSelectedAspect(val as AspectKey)}>
                             <SelectTrigger className="w-[350px]">
                                 <SelectValue />
                             </SelectTrigger>
@@ -115,33 +108,50 @@ export default function DescriptionsPage() {
                             <TabsTrigger value="dine_in">{AREA_TYPE_DISPLAY_NAMES['dine_in']}</TabsTrigger>
                             <TabsTrigger value="express">{AREA_TYPE_DISPLAY_NAMES['express']}</TabsTrigger>
                         </TabsList>
-                        {['dine_in', 'express'].map(areaType => (
+
+                        {(['dine_in', 'express'] as const).map(areaType => (
                             <TabsContent key={areaType} value={areaType} className="space-y-4">
-                                <div>
-                                    <label className="text-sm font-medium mb-2 block">
-                                        Deskripsi untuk {AREA_TYPE_DISPLAY_NAMES[areaType]}:
-                                    </label>
-                                    <Textarea
-                                        className="min-h-[200px] font-mono text-sm"
-                                        value={getDescription(selectedAspect, areaType)}
-                                        onChange={(e) => handleTextChange(selectedAspect, areaType, e.target.value)}
-                                        placeholder="Masukkan deskripsi aspek penilaian..."
-                                    />
-                                </div>
-                                
-                                {/* Preview */}
-                                <div className="border rounded-lg p-4 bg-slate-50">
-                                    <h4 className="text-sm font-bold mb-2 text-muted-foreground">Preview:</h4>
-                                    <div className="prose prose-sm max-w-none">
-                                        <h3 className="text-lg font-bold text-[#033F3F]">
-                                            {ASPECT_EMOJIS[selectedAspect]} {ASPECT_FULL_NAMES[selectedAspect]}
-                                        </h3>
-                                        <p className="text-gray-700 leading-relaxed">
-                                            {getDescription(selectedAspect, areaType) || 
-                                             <span className="text-gray-400 italic">Belum ada deskripsi</span>}
-                                        </p>
+                                <Tabs defaultValue="leader">
+                                    <div className="flex items-center justify-between mb-3">
+                                        <TabsList>
+                                            <TabsTrigger value="leader">Leader</TabsTrigger>
+                                            <TabsTrigger value="crew">Crew</TabsTrigger>
+                                        </TabsList>
+                                        <Button size="sm" onClick={() => handleSave(areaType)} disabled={isSaving}>
+                                            {isSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+                                        </Button>
                                     </div>
-                                </div>
+
+                                    {(['leader', 'crew'] as const).map(targetRole => (
+                                        <TabsContent key={targetRole} value={targetRole} className="space-y-4">
+                                            <div>
+                                                <label className="text-sm font-medium mb-2 flex items-center gap-2">
+                                                    <Badge variant={targetRole === 'leader' ? 'default' : 'secondary'}>
+                                                        {targetRole === 'leader' ? 'Leader' : 'Crew'}
+                                                    </Badge>
+                                                    <span className="text-muted-foreground">di {AREA_TYPE_DISPLAY_NAMES[areaType]}</span>
+                                                </label>
+                                                <Textarea
+                                                    className="min-h-[180px] font-mono text-sm"
+                                                    value={getDescription(selectedAspect, areaType, targetRole)}
+                                                    onChange={(e) => handleTextChange(selectedAspect, areaType, targetRole, e.target.value)}
+                                                    placeholder={`Masukkan deskripsi untuk ${targetRole === 'leader' ? 'Leader' : 'Crew'} di ${AREA_TYPE_DISPLAY_NAMES[areaType]}...`}
+                                                />
+                                            </div>
+
+                                            <div className="border rounded-lg p-4 bg-slate-50">
+                                                <p className="text-xs font-bold text-muted-foreground uppercase tracking-wide mb-2">Preview:</p>
+                                                <h3 className="text-base font-bold text-[#033F3F] mb-1">
+                                                    {ASPECT_EMOJIS[selectedAspect]} {ASPECT_FULL_NAMES[selectedAspect]}
+                                                </h3>
+                                                <div className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                                    {getDescription(selectedAspect, areaType, targetRole) ||
+                                                        <span className="text-gray-400 italic">Belum ada deskripsi</span>}
+                                                </div>
+                                            </div>
+                                        </TabsContent>
+                                    ))}
+                                </Tabs>
                             </TabsContent>
                         ))}
                     </Tabs>

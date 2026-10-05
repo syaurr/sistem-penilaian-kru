@@ -18,7 +18,7 @@ type Outlet = { id: string; name: string; outlet_code: string; area_type: string
 type CrewMember = { id: string; full_name: string; role: 'crew' | 'leader'; gender: 'male' | 'female'; };
 type Assessor = { id: string; full_name: string; code: string; };
 type Aspect = { aspect_key: string; aspect_name: string; };
-type AspectDesc = { id: number; aspect_key: string; area_type: string; description_text: string; };
+type AspectDesc = { id: number; aspect_key: string; area_type: string; target_role: string; description_text: string; };
 
 type AssessorType = 'crew' | 'specialist';
 type Step = 'welcome' | 'selectAssessorType' | 'selectAssessor' | 'selectAssessed' | 'rating' | 'success';
@@ -267,12 +267,20 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
             setAssessed(selected);
             setIsLoading(true);
             try {
-                const response = await fetch(`/api/assessment-aspects?assessor_code=${assessorCode}&role=${selected.role}&gender=${selected.gender}`);
-                const aspectsData = await response.json();
-                if (!response.ok) throw new Error("Gagal mengambil data aspek");
+                const [aspectsRes, descRes] = await Promise.all([
+                    fetch(`/api/assessment-aspects?assessor_code=${assessorCode}&role=${selected.role}&gender=${selected.gender}`),
+                    fetch(`/api/aspect-descriptions?area_type=${outlet?.area_type}&target_role=${selected.role}`),
+                ]);
+                const aspectsData = await aspectsRes.json();
+                if (!aspectsRes.ok) throw new Error("Gagal mengambil data aspek");
 
                 if (aspectsData.length === 0) {
                     toast.warning("Info", { description: "Asesor ini tidak memiliki aspek penilaian untuk role target." });
+                }
+
+                if (descRes.ok) {
+                    const descData = await descRes.json();
+                    setDescriptions(descData);
                 }
 
                 setAspects(aspectsData);
@@ -403,8 +411,9 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
     };
 
     const getAspectDescription = (key: string) => {
+        // descriptions sudah di-filter berdasarkan target_role dan area_type saat fetch
         const found = descriptions.find(d => d.aspect_key === key);
-        return found ? found.description_text : "Tidak ada deskripsi.";
+        return found ? found.description_text : "Belum ada deskripsi untuk aspek ini.";
     };
 
     const allAspectsRated = aspects.length > 0 && Object.keys(scores).length === aspects.length;
