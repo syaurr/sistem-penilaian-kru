@@ -99,6 +99,7 @@ export async function GET(request: Request) {
             });
             
             let totalNilaiCrew = 0;
+            let totalMaxPossible = 0;
             for (const aspectKey in aspectRatings) {
                 const avgRating = aspectRatings[aspectKey].reduce((a, b) => a + b, 0) / aspectRatings[aspectKey].length;
                 const weightKey = `${crew.role}-${crew.gender}-${aspectKey}`;
@@ -110,9 +111,13 @@ export async function GET(request: Request) {
                 const weightedScore = (avgRating / 5) * finalMaxScore;
                 aspectScores[aspectKey] = { score: weightedScore, max_score: finalMaxScore };
                 totalNilaiCrew += weightedScore;
+                totalMaxPossible += finalMaxScore;
             }
             
-            const totalNilaiAkhir = totalNilaiCrew;
+            // Normalisasi ke skala 100: total harus proporsional terhadap max possible
+            const totalNilaiAkhir = totalMaxPossible > 0
+                ? (totalNilaiCrew / totalMaxPossible) * 100
+                : 0;
             const totalPotentialAssessors = (crewByOutlet[crew.outlet_id] || 1) - 1;
             const actualAssessorsCount = crewAssessments.length;
             const peerAssessorsCount = crewAssessments.filter(a => a.assessor_code === 'crew' || !a.assessor_code).length;

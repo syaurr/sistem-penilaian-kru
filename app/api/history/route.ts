@@ -6,8 +6,9 @@ export async function GET(request: Request) {
     const assessor_id = searchParams.get('assessor_id');
     const assessor_code = searchParams.get('assessor_code');
 
-    if (!assessor_id) {
-        return NextResponse.json({ message: 'Assessor ID is required' }, { status: 400,
+    // Harus ada salah satu identifier: assessor_id ATAU assessor_code
+    if (!assessor_id && !assessor_code) {
+        return NextResponse.json({ message: 'assessor_id atau assessor_code wajib diisi.' }, { status: 400,
             headers: { 'Cache-Control': 'no-store' }
         });
     }
@@ -24,16 +25,17 @@ export async function GET(request: Request) {
             return NextResponse.json([], { headers: { 'Cache-Control': 'no-store' } });
         }
 
-        // Untuk penilai spesialis (assessor_code ada dan bukan 'crew'),
-        // query by assessor_code karena assessor_id mereka null di tabel assessments
+        // Build query berdasarkan identifier yang tersedia
         let query = supabaseAdmin
             .from('assessments')
             .select('assessed_id')
             .eq('period_id', activePeriod.id);
 
         if (assessor_code && assessor_code !== 'crew') {
+            // Penilai spesialis: filter by assessor_code
             query = query.eq('assessor_code', assessor_code);
-        } else {
+        } else if (assessor_id) {
+            // Penilai crew/peer: filter by assessor_id
             query = query.eq('assessor_id', assessor_id);
         }
 
@@ -43,11 +45,10 @@ export async function GET(request: Request) {
             throw error;
         }
         
-        // Kirim kembali hanya array berisi ID
+        // Kembalikan array berisi ID yang sudah dinilai (plain string array)
         return NextResponse.json(data.map(item => item.assessed_id), { headers: { 'Cache-Control': 'no-store' } });
 
     } catch (error: any) {
-        // Tetap simpan log error di server untuk pemantauan
         console.error("API /api/history Error:", error.message);
         return NextResponse.json({ message: "Gagal memuat riwayat penilaian." }, { status: 500,
             headers: { 'Cache-Control': 'no-store' }

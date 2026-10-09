@@ -200,21 +200,27 @@ export default function AssessmentPage({ params }: { params: Promise<{ outletCod
             setAssessorCode('crew');
             const remaining = allCrew.filter(c => c.id !== selected.id);
 
+            let filteredRemaining = remaining;
             if (activePeriod) {
                 try {
                     const historyRes = await fetch(`/api/history?assessor_id=${selected.id}&period_id=${activePeriod.id}`);
                     if (historyRes.ok) {
                         const historyData = await historyRes.json();
-                        const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
-                        setRemainingToAssess(remaining.filter(c => !alreadyAssessedIds.has(c.id)));
-                    } else {
-                        setRemainingToAssess(remaining);
+                        // API returns plain array of assessed_id strings
+                        const alreadyAssessedIds = new Set(historyData);
+                        filteredRemaining = remaining.filter(c => !alreadyAssessedIds.has(c.id));
                     }
-                } catch { setRemainingToAssess(remaining); }
-            } else {
-                setRemainingToAssess(remaining);
+                } catch { /* fallback to all remaining */ }
             }
-            setStep('selectAssessed');
+
+            setRemainingToAssess(filteredRemaining);
+
+            // Jika sudah menilai semua, langsung ke halaman selesai
+            if (filteredRemaining.length === 0) {
+                setStep('success');
+            } else {
+                setStep('selectAssessed');
+            }
         }
     };
 

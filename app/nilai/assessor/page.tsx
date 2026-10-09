@@ -179,28 +179,26 @@ export default function AssessorPage() {
             }
 
             // Filter out already assessed crew
-            const nonSupervisorCrew = crew;
+            let filteredRemaining = crew;
             if (activePeriod) {
                 try {
                     const historyRes = await fetch(`/api/history?assessor_code=${assessorCode}&period_id=${activePeriod.id}`);
                     if (historyRes.ok) {
                         const historyData = await historyRes.json();
-                        const alreadyAssessedIds = new Set(historyData.map((h: any) => h.assessed_id));
-                        // Filter by this outlet only
-                        const outletCrewIds = new Set(nonSupervisorCrew.map(c => c.id));
-                        const remaining = nonSupervisorCrew.filter(c => !alreadyAssessedIds.has(c.id));
-                        setRemainingToAssess(remaining);
-                    } else {
-                        setRemainingToAssess(nonSupervisorCrew);
+                        // API returns plain array of assessed_id strings
+                        const alreadyAssessedIds = new Set(historyData);
+                        filteredRemaining = crew.filter(c => !alreadyAssessedIds.has(c.id));
                     }
-                } catch {
-                    setRemainingToAssess(nonSupervisorCrew);
-                }
-            } else {
-                setRemainingToAssess(nonSupervisorCrew);
+                } catch { /* fallback to all crew */ }
             }
 
-            setStep('selectCrew');
+            setRemainingToAssess(filteredRemaining);
+
+            if (filteredRemaining.length === 0) {
+                setStep('crewSuccess');
+            } else {
+                setStep('selectCrew');
+            }
         } catch (err: any) {
             setError(err.message);
         } finally {
